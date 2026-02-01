@@ -67,11 +67,16 @@
 #define kSendRight      310
 #define kSendBottom     75
 
-/* Button position */
-#define kButtonLeft     120
-#define kButtonTop      82
-#define kButtonRight    200
-#define kButtonBottom   102
+/* Button positions - side by side */
+#define kSendButtonLeft     60
+#define kSendButtonTop      82
+#define kSendButtonRight    140
+#define kSendButtonBottom   102
+
+#define kResetButtonLeft    180
+#define kResetButtonTop     82
+#define kResetButtonRight   260
+#define kResetButtonBottom  102
 
 /* Receive text area positions */
 #define kRecvLeft       10
@@ -110,6 +115,7 @@ static WindowPtr gMainWindow = NULL;
 static TEHandle gSendText = NULL;
 static TEHandle gRecvText = NULL;
 static ControlHandle gSendButton = NULL;
+static ControlHandle gResetButton = NULL;
 static Boolean gRunning = true;
 
 /* Function prototypes */
@@ -127,6 +133,7 @@ static void HandleFileMenu(short item);
 static void HandleEditMenu(short item);
 static void UpdateWindow(WindowPtr window);
 static void SendTextToSerial(void);
+static void SendResetCommand(void);
 static void PollSerialInput(void);
 static void DoAboutDialog(void);
 static void DoSettingsDialog(void);
@@ -341,9 +348,14 @@ static void CreateMainWindow(void)
     }
 
     /* Create Send button */
-    SetRect(&buttonRect, kButtonLeft, kButtonTop, kButtonRight, kButtonBottom);
+    SetRect(&buttonRect, kSendButtonLeft, kSendButtonTop, kSendButtonRight, kSendButtonBottom);
     gSendButton = NewControl(gMainWindow, &buttonRect, "\pSend",
                              true, 0, 0, 1, pushButProc, 0);
+
+    /* Create Reset button (for fujinet-nio) */
+    SetRect(&buttonRect, kResetButtonLeft, kResetButtonTop, kResetButtonRight, kResetButtonBottom);
+    gResetButton = NewControl(gMainWindow, &buttonRect, "\pReset",
+                              true, 0, 0, 1, pushButProc, 0);
 
     /* Create receive text area - inset from frame border */
     SetRect(&textRect, kRecvLeft + 4, kRecvTop + 4, kRecvRight - 4, kRecvBottom - 4);
@@ -415,14 +427,16 @@ static void HandleMouseDown(EventRecord *event)
                 localPoint = event->where;
                 GlobalToLocal(&localPoint);
 
-                /* Check if click is in button */
-                if (gSendButton != NULL) {
-                    if (FindControl(localPoint, window, &control) == kControlButtonPart) {
-                        if (TrackControl(control, localPoint, NULL) == kControlButtonPart) {
+                /* Check if click is in a button */
+                if (FindControl(localPoint, window, &control) == kControlButtonPart) {
+                    if (TrackControl(control, localPoint, NULL) == kControlButtonPart) {
+                        if (control == gSendButton) {
                             SendTextToSerial();
+                        } else if (control == gResetButton) {
+                            SendResetCommand();
                         }
-                        return;
                     }
+                    return;
                 }
 
                 /* Check if click is in text area */
@@ -690,6 +704,68 @@ static void SendTextToSerial(void)
     /* Clear the text field */
     TESetSelect(0, 32767, gSendText);
     TEDelete(gSendText);
+}
+
+/*
+ * Calculate fujinet-nio checksum (fold carry into low byte)
+ */
+static unsigned char CalcFujiChecksum(unsigned char *data, short length)
+{
+    unsigned short sum = 0;
+    short i;
+
+    for (i = 0; i < length; i++) {
+        sum += data[i];
+        sum = (sum >> 8) + (sum & 0xFF);
+    }
+    return (unsigned char)(sum & 0xFF);
+}
+
+/*
+ * Send fujinet-nio reset command over serial
+ * Protocol: SLIP-framed FujiBus packet
+ * Device 0x70 (FujiNet), Command 0xFF (Reset)
+ */
+static void SendResetCommand(void)
+{
+    unsigned char packet[10];
+    long count;
+
+    /* SLIP constants */
+    #define SLIP_END  0xC0
+
+    /* FujiBus header constants */
+    #define FUJINET_DEVICE  0x70
+    #define FUJI_CMD_RESET  0xFF
+    #define HEADER_SIZE     6
+
+    if (gSerialOutRef == 0) {
+        SysBeep(10);
+        return;
+    }
+
+    /* Build the FujiBus packet */
+    /* Header: device, command, length (2 bytes LE), checksum, descriptor */
+    packet[0] = SLIP_END;           /* SLIP frame start */
+    packet[1] = FUJINET_DEVICE;     /* Device: FujiNet (0x70) */
+    packet[2] = FUJI_CMD_RESET;     /* Command: Reset (0xFF) */
+    packet[3] = HEADER_SIZE;        /* Length low byte (6) */
+    packet[4] = 0x00;               /* Length high byte */
+    packet[5] = 0x00;               /* Checksum placeholder */
+    packet[6] = 0x00;               /* Descriptor: no parameters */
+    packet[7] = SLIP_END;           /* SLIP frame end */
+
+    /* Calculate checksum over the FujiBus packet (bytes 1-6) */
+    packet[5] = CalcFujiChecksum(&packet[1], HEADER_SIZE);
+
+    /* Send the SLIP-framed packet */
+    count = 8;
+    FSWrite(gSerialOutRef, &count, packet);
+
+    /* Flash the button to indicate success */
+    HiliteControl(gResetButton, 1);
+    Delay(8, NULL);
+    HiliteControl(gResetButton, 0);
 }
 
 /*
