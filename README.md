@@ -41,7 +41,6 @@ make
 | `build/SerialSend.bin` | MacBinary format application |
 | `build/SerialSend.dsk` | 800KB raw HFS disk image |
 | `SerialSend.dsk` | Copy of above (for emulator) |
-| `SerialSend.img` | Disk Copy 4.2 format (for real Macs) |
 
 ## Running in Emulator
 
@@ -120,8 +119,7 @@ Default: Modem port at 9600 baud, 8N1, no flow control.
 ├── CMakeLists.txt      # Build configuration
 ├── build.sh            # Build script
 ├── run.sh              # Emulator launch script
-├── serial_terminal.py  # Host-side serial terminal
-└── make_dc42.py        # Disk Copy 4.2 converter
+└── serial_terminal.py  # Host-side serial terminal
 ```
 
 ### main.c Functions
@@ -135,16 +133,6 @@ Default: Modem port at 9600 baud, 8N1, no flow control.
 | `SendTextToSerial()` | Sends text with CR→CRLF conversion |
 | `PollSerialInput()` | Reads incoming serial data |
 | `DoSettingsDialog()` | Port and baud rate configuration |
-
-## Disk Copy 4.2 Conversion
-
-To create disk images compatible with real Macintosh hardware:
-
-```bash
-python3 make_dc42.py build/SerialSend.dsk SerialSend.img "Serial Send"
-```
-
-Supported sizes: 400K, 720K, 800K, 1440K
 
 ## Emulator Configuration
 
