@@ -17,3 +17,4 @@ wheels/
 # Build artifacts
 *.dsk
 *.img
+*.dc42
