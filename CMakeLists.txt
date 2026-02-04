@@ -12,6 +12,10 @@ project(SerialSend)
 add_application(SerialSend
     SerialSend.r
     main.c
+    serial.c
+    window.c
+    menus.c
+    dialogs.c
     CREATOR "SSND"
 )
 
