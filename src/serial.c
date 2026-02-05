@@ -206,6 +206,17 @@ void SendTextToSerial(void)
 }
 
 /*
+ * FujiBus protocol constants
+ */
+#define SLIP_END            0xC0    /* SLIP frame delimiter */
+#define SLIP_ESCAPE         0xDB    /* SLIP escape byte */
+#define SLIP_ESC_END        0xDC    /* SLIP escaped END */
+#define SLIP_ESC_ESC        0xDD    /* SLIP escaped ESCAPE */
+#define FUJINET_DEVICE      0x70    /* FujiNet device ID */
+#define FUJI_CMD_RESET      0xFF    /* Reset command */
+#define FUJIBUS_HEADER_SIZE 6       /* Header size for checksum calculation */
+
+/*
  * Calculate fujinet-nio checksum (fold carry into low byte)
  */
 static unsigned char CalcFujiChecksum(unsigned char *data, short length)
@@ -221,45 +232,72 @@ static unsigned char CalcFujiChecksum(unsigned char *data, short length)
 }
 
 /*
- * Send fujinet-nio reset command over serial
- * Protocol: SLIP-framed FujiBus packet
- * Device 0x70 (FujiNet), Command 0xFF (Reset)
+ * Build and send a FujiBus packet over serial.
+ * Matches the Python build_fuji_packet() reference implementation:
+ *   Header: device(1), command(1), length(2 LE), checksum(1), descriptor(1)
+ *   Descriptor is always 0 (no params), payload follows header.
+ *   SLIP-encoded: C0 [escaped payload] C0
  */
-void SendResetCommand(void)
+static void SendFujiBusPacket(unsigned char device, unsigned char command,
+                              unsigned char *payload, short payloadLen)
 {
-    unsigned char packet[10];
+    unsigned char pkt[64];   /* raw FujiBus packet */
+    unsigned char slip[130]; /* SLIP-encoded output (worst case 2x + 2) */
+    short pktLen;
+    short slipLen;
+    short i;
     long count;
-
-    /* SLIP constants */
-    #define SLIP_END  0xC0
-
-    /* FujiBus header constants */
-    #define FUJINET_DEVICE  0x70
-    #define FUJI_CMD_RESET  0xFF
-    #define HEADER_SIZE     6
 
     if (gSerialOutRef == 0) {
         SysBeep(10);
         return;
     }
 
-    /* Build the FujiBus packet */
-    /* Header: device, command, length (2 bytes LE), checksum, descriptor */
-    packet[0] = SLIP_END;           /* SLIP frame start */
-    packet[1] = FUJINET_DEVICE;     /* Device: FujiNet (0x70) */
-    packet[2] = FUJI_CMD_RESET;     /* Command: Reset (0xFF) */
-    packet[3] = HEADER_SIZE;        /* Length low byte (6) */
-    packet[4] = 0x00;               /* Length high byte */
-    packet[5] = 0x00;               /* Checksum placeholder */
-    packet[6] = 0x00;               /* Descriptor: no parameters */
-    packet[7] = SLIP_END;           /* SLIP frame end */
+    /* Build raw FujiBus packet */
+    pktLen = FUJIBUS_HEADER_SIZE + payloadLen;
+    pkt[0] = device;
+    pkt[1] = command;
+    pkt[2] = (unsigned char)(pktLen & 0xFF);        /* length low */
+    pkt[3] = (unsigned char)((pktLen >> 8) & 0xFF);  /* length high */
+    pkt[4] = 0;                                       /* checksum placeholder */
+    pkt[5] = 0;                                       /* descriptor: no params */
 
-    /* Calculate checksum over the FujiBus packet (bytes 1-6) */
-    packet[5] = CalcFujiChecksum(&packet[1], HEADER_SIZE);
+    /* Copy payload after header */
+    for (i = 0; i < payloadLen; i++) {
+        pkt[FUJIBUS_HEADER_SIZE + i] = payload[i];
+    }
+
+    /* Calculate and insert checksum */
+    pkt[4] = CalcFujiChecksum(pkt, pktLen);
+
+    /* SLIP encode: C0 [escaped bytes] C0 */
+    slipLen = 0;
+    slip[slipLen++] = SLIP_END;
+    for (i = 0; i < pktLen; i++) {
+        if (pkt[i] == SLIP_END) {
+            slip[slipLen++] = SLIP_ESCAPE;
+            slip[slipLen++] = SLIP_ESC_END;
+        } else if (pkt[i] == SLIP_ESCAPE) {
+            slip[slipLen++] = SLIP_ESCAPE;
+            slip[slipLen++] = SLIP_ESC_ESC;
+        } else {
+            slip[slipLen++] = pkt[i];
+        }
+    }
+    slip[slipLen++] = SLIP_END;
 
     /* Send the SLIP-framed packet */
-    count = 8;
-    FSWrite(gSerialOutRef, &count, packet);
+    count = slipLen;
+    FSWrite(gSerialOutRef, &count, slip);
+}
+
+/*
+ * Send fujinet-nio reset command over serial
+ * Device 0x70 (FujiNet), Command 0xFF (Reset), no payload
+ */
+void SendResetCommand(void)
+{
+    SendFujiBusPacket(FUJINET_DEVICE, FUJI_CMD_RESET, NULL, 0);
 
     /* Flash the button to indicate success */
     HiliteControl(gResetButton, 1);

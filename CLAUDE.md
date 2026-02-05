@@ -104,6 +104,63 @@ Use the universal headers from Retro68:
 ### Pascal Strings
 Use `\p` prefix for Pascal strings: `"\pHello"` creates a length-prefixed string.
 
+## FujiNet-NIO Integration
+
+### Overview
+The app can communicate with [fujinet-nio](https://github.com/FujiNetWIFI/fujinet-nio) over serial using the FujiBus protocol (SLIP-framed binary packets). The "Reset" button sends a FujiNet Reset command.
+
+### FujiBus Protocol
+FujiBus packets are SLIP-encoded (RFC 1055) with this structure:
+```
+C0 [SLIP-escaped payload] C0
+```
+
+Payload is a 6-byte header + optional data:
+```
+Offset  Field       Size    Notes
+0       device      1       0x70 = FujiNet
+1       command     1       0xFF = Reset, 0xFE = GetSsid (not yet implemented)
+2-3     length      2 LE    Total packet length including header
+4       checksum    1       Fold-carry checksum (computed with this field = 0)
+5       descriptor  1       0x00 = no params
+```
+
+SLIP escaping: `0xC0` becomes `DB DC`, `0xDB` becomes `DB DD`.
+
+Reference implementation: `build_fuji_packet()` in the fujinet-nio Python tools at `/home/bkrein/code/markjfisher/fujinet-nio/py/fujinet_tools/fujibus.py`.
+
+### Running fujinet-nio
+Source: `/home/bkrein/code/markjfisher/fujinet-nio`
+
+Run from its build directory:
+```bash
+cd /home/bkrein/code/markjfisher/fujinet-nio/build/fujibus-pty-debug
+./run-fujinet-nio
+```
+
+At startup it prints two PTY paths:
+- **FujiBus PTY** (`[PtyChannel]`): Connect the Mac emulator's serial port here
+- **Console PTY** (`[Console]`): For diagnostics commands (`core.info`, `core.stats`, `disk.slots`)
+
+Important: Do not connect FujiBus tooling to the console PTY or vice versa.
+
+### Console Diagnostics
+Connect to the console PTY with picocom:
+```bash
+picocom -q --echo --omap crlf --imap lfcrlf /dev/pts/<N>
+```
+
+Available commands: `help`, `core.info` (version/build), `core.stats` (tick count/devices), `disk.slots`.
+
+### Supported FujiBus Commands (device 0x70)
+Currently only `Reset` (0xFF) is implemented in fujinet-nio. Other commands return status 8 (Unsupported). `GetSsid` (0xFE) is defined but not yet handled.
+
+### Status Codes
+- 0 = Ok
+- 1 = DeviceNotFound
+- 2 = InvalidRequest
+- 8 = Unsupported
+
 ## Emulator Configuration
 PCE Mac Classic config at `~/Retro68-build/mac-classic.cfg`:
 - Port 0 (modem): `posix:file=/dev/tnt1`

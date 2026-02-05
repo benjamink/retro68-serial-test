@@ -10,12 +10,12 @@ cmake_minimum_required(VERSION 3.5)
 project(SerialSend)
 
 add_application(SerialSend
-    SerialSend.r
-    main.c
-    serial.c
-    window.c
-    menus.c
-    dialogs.c
+    src/SerialSend.r
+    src/main.c
+    src/serial.c
+    src/window.c
+    src/menus.c
+    src/dialogs.c
     CREATOR "SSND"
 )
 
