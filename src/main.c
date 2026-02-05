@@ -1,8 +1,7 @@
 /*
- * SerialSend - A simple classic Mac application
+ * FujiNet Mac Config - A classic Mac application for FujiNet configuration
  * Displays a window with a text input, a "Send" button, and a receive area.
- * Sends the text to the serial port when the button is clicked.
- * Displays received serial data in the receive area.
+ * Communicates with FujiNet over the serial port using the FujiBus protocol.
  */
 
 #include <Quickdraw.h>

@@ -1,5 +1,5 @@
 /*
- * SerialSend.r - Resources for SerialSend application
+ * FujiNetMacConfig.r - Resources for FujiNet Mac Config application
  */
 
 #include "Processes.r"
@@ -11,9 +11,9 @@
 #include "Icons.r"
 
 /* Application signature */
-type 'SSND' as 'STR ';
-resource 'SSND' (0, purgeable) {
-    "SerialSend 1.0"
+type 'FNMC' as 'STR ';
+resource 'FNMC' (0, purgeable) {
+    "FujiNet Mac Config 1.0"
 };
 
 /* Apple Menu */
@@ -22,7 +22,7 @@ resource 'MENU' (128) {
     allEnabled, enabled;
     apple;
     {
-        "About SerialSend...", noIcon, noKey, noMark, plain;
+        "About FujiNet Mac Config...", noIcon, noKey, noMark, plain;
         "-", noIcon, noKey, noMark, plain;
     }
 };
@@ -109,7 +109,7 @@ resource 'DITL' (128) {
         {10, 20, 30, 240},
         StaticText {
             disabled,
-            "SerialSend"
+            "FujiNet Mac Config"
         };
         /* Version */
         {35, 20, 55, 240},
@@ -121,7 +121,7 @@ resource 'DITL' (128) {
         {60, 20, 80, 240},
         StaticText {
             disabled,
-            "Send text to serial port"
+            "FujiNet configuration for classic Mac"
         };
     }
 };
@@ -171,7 +171,7 @@ resource 'FREF' (128, purgeable) {
 
 /* Bundle for Finder */
 resource 'BNDL' (128, purgeable) {
-    'SSND',
+    'FNMC',
     0,
     {
         'ICN#', { 0, 128 },

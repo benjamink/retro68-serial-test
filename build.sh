@@ -1,5 +1,5 @@
 #!/bin/bash
-# Build script for SerialSend
+# Build script for FujiNetMacConfig
 
 set -e
 
@@ -18,13 +18,13 @@ make
 cd ..
 
 # Copy disk image to project root
-cp build/SerialSend.dsk .
+cp build/FujiNetMacConfig.dsk .
 
 # Convert to Disk Copy 4.2 format for real Macs
-python3 make_dc42.py build/SerialSend.dsk SerialSend.img "Serial Send"
+python3 make_dc42.py build/FujiNetMacConfig.dsk FujiNetMacConfig.img "FujiNet Mac Config"
 
 echo ""
 echo "Build complete!"
 echo "Disk images:"
-echo "  SerialSend.dsk - Raw HFS (for emulator)"
-echo "  SerialSend.img - Disk Copy 4.2 (for real Mac)"
+echo "  FujiNetMacConfig.dsk - Raw HFS (for emulator)"
+echo "  FujiNetMacConfig.img - Disk Copy 4.2 (for real Mac)"

@@ -1,7 +1,7 @@
-# SerialSend - Retro68 Classic Mac Application
+# FujiNet Mac Config - Retro68 Classic Mac Application
 
 ## Project Overview
-A classic Macintosh application built with Retro68 that displays a window with a text input field and a "Send" button. Text entered is sent to the serial port.
+A classic Macintosh application built with Retro68 for configuring FujiNet over serial. Displays a window with a text input field, Send and Reset buttons, and a receive area. Communicates with fujinet-nio using the FujiBus protocol.
 
 ## Build System
 
@@ -22,10 +22,10 @@ Or use the convenience script:
 ```
 
 ### Output Files
-- `build/SerialSend.bin` - MacBinary format application
-- `build/SerialSend.dsk` - 800KB raw HFS disk image
-- `SerialSend.dsk` - Copy of above in project root (for emulator)
-- `SerialSend.img` - Disk Copy 4.2 format (for real Macs)
+- `build/FujiNetMacConfig.bin` - MacBinary format application
+- `build/FujiNetMacConfig.dsk` - 800KB raw HFS disk image
+- `FujiNetMacConfig.dsk` - Copy of above in project root (for emulator)
+- `FujiNetMacConfig.img` - Disk Copy 4.2 format (for real Macs)
 
 ### Disk Copy 4.2 Conversion
 The `make_dc42.py` script converts raw disk images to Disk Copy 4.2 format:
@@ -73,7 +73,7 @@ Change `.AOut`/`.AIn` to `.BOut`/`.BIn` in `InitializeSerial()`. Port B outputs 
 - `HandleEvent()` - Main event dispatch
 - `SendTextToSerial()` - Sends text with CR→CRLF conversion
 
-### SerialSend.r
+### FujiNetMacConfig.r
 Rez resource file containing:
 - Menu bar (Apple, File, Edit menus)
 - SIZE resource for MultiFinder

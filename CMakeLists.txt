@@ -1,4 +1,4 @@
-# SerialSend - A simple Retro68 application that sends text to serial port
+# FujiNetMacConfig - A Retro68 classic Mac application for FujiNet configuration
 #
 # Build instructions:
 # mkdir build
@@ -7,16 +7,16 @@
 # make
 
 cmake_minimum_required(VERSION 3.5)
-project(SerialSend)
+project(FujiNetMacConfig)
 
-add_application(SerialSend
-    src/SerialSend.r
+add_application(FujiNetMacConfig
+    src/FujiNetMacConfig.r
     src/main.c
     src/serial.c
     src/window.c
     src/menus.c
     src/dialogs.c
-    CREATOR "SSND"
+    CREATOR "FNMC"
 )
 
-set_target_properties(SerialSend PROPERTIES LINK_FLAGS "-Wl,-gc-sections")
+set_target_properties(FujiNetMacConfig PROPERTIES LINK_FLAGS "-Wl,-gc-sections")

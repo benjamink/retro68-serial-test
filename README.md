@@ -1,6 +1,6 @@
-# SerialSend
+# FujiNet Mac Config
 
-A classic Macintosh serial terminal application built with [Retro68](https://github.com/autc04/Retro68).
+A classic Macintosh FujiNet configuration application built with [Retro68](https://github.com/autc04/Retro68).
 
 ## Features
 
@@ -8,6 +8,7 @@ A classic Macintosh serial terminal application built with [Retro68](https://git
 - Configurable serial port (Modem or Printer)
 - Configurable baud rate (1200, 2400, 9600, 19200, 38400, 57600)
 - Receive area displaying incoming serial data
+- FujiNet Reset command via FujiBus protocol
 - Standard Mac menus (Apple, File, Edit)
 - Keyboard shortcuts: Cmd+S to send, Cmd+Return as alternative
 - Host-side Python terminal for bidirectional communication
@@ -38,9 +39,9 @@ make
 
 | File | Description |
 |------|-------------|
-| `build/SerialSend.bin` | MacBinary format application |
-| `build/SerialSend.dsk` | 800KB raw HFS disk image |
-| `SerialSend.dsk` | Copy of above (for emulator) |
+| `build/FujiNetMacConfig.bin` | MacBinary format application |
+| `build/FujiNetMacConfig.dsk` | 800KB raw HFS disk image |
+| `FujiNetMacConfig.dsk` | Copy of above (for emulator) |
 
 ## Running in Emulator
 
@@ -61,7 +62,7 @@ The app uses **Port A (Modem)** by default, which connects to `/dev/tnt1` in the
 │  PCE Emulator   │                  │   Host Machine   │
 │  (Mac Classic)  │                  │                  │
 │                 │                  │                  │
-│   SerialSend    │◄────/dev/tnt1────►│  serial_terminal │
+│ FujiNetMacConfig│◄────/dev/tnt1────►│  serial_terminal │
 │     Port A      │     /dev/tnt0    │                  │
 └─────────────────┘                  └──────────────────┘
 ```
@@ -114,15 +115,20 @@ Default: Modem port at 9600 baud, 8N1, no flow control.
 ## Project Structure
 
 ```
-├── main.c              # Application source code
-├── SerialSend.r        # Rez resource file (menus, dialogs, icons)
-├── CMakeLists.txt      # Build configuration
-├── build.sh            # Build script
-├── run.sh              # Emulator launch script
-└── serial_terminal.py  # Host-side serial terminal
+├── src/
+│   ├── main.c              # Application entry point and event loop
+│   ├── serial.c            # Serial port and FujiBus protocol
+│   ├── window.c            # Window creation and drawing
+│   ├── menus.c             # Menu handling
+│   ├── dialogs.c           # Settings dialog
+│   └── FujiNetMacConfig.r  # Rez resource file (menus, dialogs, icons)
+├── CMakeLists.txt          # Build configuration
+├── build.sh                # Build script
+├── run.sh                  # Emulator launch script
+└── serial_terminal.py      # Host-side serial terminal
 ```
 
-### main.c Functions
+### Source Functions
 
 | Function | Description |
 |----------|-------------|
@@ -131,6 +137,7 @@ Default: Modem port at 9600 baud, 8N1, no flow control.
 | `CreateMainWindow()` | Creates window with TextEdit fields and button |
 | `HandleEvent()` | Main event dispatch loop |
 | `SendTextToSerial()` | Sends text with CR→CRLF conversion |
+| `SendResetCommand()` | Sends FujiBus Reset to FujiNet |
 | `PollSerialInput()` | Reads incoming serial data |
 | `DoSettingsDialog()` | Port and baud rate configuration |
 

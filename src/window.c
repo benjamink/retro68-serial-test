@@ -35,7 +35,7 @@ void CreateMainWindow(void)
             (qd.screenBits.bounds.right + kWindowWidth) / 2,
             (qd.screenBits.bounds.bottom + kWindowHeight) / 2 + 20);
 
-    gMainWindow = NewWindow(NULL, &windowRect, "\pSerial Terminal",
+    gMainWindow = NewWindow(NULL, &windowRect, "\pFujiNet Mac Config",
                             true, documentProc, (WindowPtr)-1, true, 0);
 
     if (gMainWindow == NULL) {
