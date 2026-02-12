@@ -11,6 +11,7 @@
 #include <Windows.h>
 #include <Quickdraw.h>
 #include <ToolUtils.h>
+#include <OSUtils.h>
 
 #include "constants.h"
 #include "serial.h"
@@ -196,9 +197,11 @@ void SendTextToSerial(void)
     HUnlock(textHandle);
 
     /* Flash the button to indicate success */
-    HiliteControl(gSendButton, 1);
-    Delay(8, NULL);
-    HiliteControl(gSendButton, 0);
+    if (gSendButton != NULL) {
+        HiliteControl(gSendButton, 1);
+        Delay(8, NULL);
+        HiliteControl(gSendButton, 0);
+    }
 
     /* Clear the text field */
     TESetSelect(0, 32767, gSendText);
@@ -300,9 +303,202 @@ void SendResetCommand(void)
     SendFujiBusPacket(FUJINET_DEVICE, FUJI_CMD_RESET, NULL, 0);
 
     /* Flash the button to indicate success */
-    HiliteControl(gResetButton, 1);
-    Delay(8, NULL);
-    HiliteControl(gResetButton, 0);
+    if (gResetButton != NULL) {
+        HiliteControl(gResetButton, 1);
+        Delay(8, NULL);
+        HiliteControl(gResetButton, 0);
+    }
+}
+
+/*
+ * Get clock time from fujinet-nio
+ * Device 0x45 (Clock), Command 0x01 (GetTime), no payload
+ * Returns true if successful, with formatted time in timeStr
+ */
+Boolean GetClockTime(char *timeStr, short maxLen)
+{
+    unsigned char recvSlip[256];
+    unsigned char recvPkt[128];
+    short recvPktLen;
+    long count;
+    long startTicks;
+    long timeout = 300;  /* 5 second timeout (60 ticks per second) */
+    short i, j;
+    Boolean inFrame;
+    Boolean escaped;
+    unsigned long unixTime;
+    DateTimeRec dt;
+    
+    #define CLOCK_DEVICE    0x45
+    #define CLOCK_GET_TIME  0x01
+    
+    if (gSerialOutRef == 0 || gSerialInRef == 0) {
+        return false;
+    }
+    
+    /* Flush any pending input */
+    SerGetBuf(gSerialInRef, &count);
+    if (count > 0) {
+        unsigned char dummy[256];
+        if (count > sizeof(dummy)) count = sizeof(dummy);
+        FSRead(gSerialInRef, &count, dummy);
+    }
+    
+    /* Send GetTime command */
+    SendFujiBusPacket(CLOCK_DEVICE, CLOCK_GET_TIME, NULL, 0);
+    
+    /* Wait for response with timeout */
+    startTicks = TickCount();
+    recvPktLen = 0;
+    inFrame = false;
+    escaped = false;
+    
+    while ((TickCount() - startTicks) < timeout) {
+        long checkCount;
+        
+        SerGetBuf(gSerialInRef, &count);
+        
+        if (count > 0) {
+            if (count > sizeof(recvSlip)) count = sizeof(recvSlip);
+            FSRead(gSerialInRef, &count, recvSlip);
+            
+            /* Process SLIP frame */
+            for (i = 0; i < count; i++) {
+                unsigned char b = recvSlip[i];
+                
+                if (b == SLIP_END) {
+                    if (inFrame && recvPktLen > 0) {
+                        /* End of frame - process it */
+                        goto frame_complete;
+                    }
+                    inFrame = true;
+                    recvPktLen = 0;
+                    escaped = false;
+                } else if (escaped) {
+                    if (b == SLIP_ESC_END) {
+                        recvPkt[recvPktLen++] = SLIP_END;
+                    } else if (b == SLIP_ESC_ESC) {
+                        recvPkt[recvPktLen++] = SLIP_ESCAPE;
+                    }
+                    escaped = false;
+                } else if (b == SLIP_ESCAPE) {
+                    escaped = true;
+                } else if (inFrame && recvPktLen < sizeof(recvPkt)) {
+                    recvPkt[recvPktLen++] = b;
+                }
+            }
+        }
+        
+        /* Small delay to avoid spinning CPU - 1 tick (~16ms) */
+        Delay(1, NULL);
+    }
+    
+    /* Timeout - no response */
+    return false;
+    
+frame_complete:
+    /* Validate packet: need header(6) + status param(1) + payload(12) = 19 bytes
+       Response format: device(1) cmd(1) len(2) chk(1) desc(1) status(1) payload(12) */
+    if (recvPktLen < 19) {
+        return false;
+    }
+
+    /* Verify checksum: save it, zero it, recalculate, compare */
+    {
+        unsigned char savedChecksum = recvPkt[4];
+        unsigned char calcChecksum;
+        recvPkt[4] = 0;
+        calcChecksum = CalcFujiChecksum(recvPkt, recvPktLen);
+        recvPkt[4] = savedChecksum;
+        if (calcChecksum != savedChecksum) {
+            return false;
+        }
+    }
+
+    /* Check device and command match */
+    if (recvPkt[0] != CLOCK_DEVICE || recvPkt[1] != CLOCK_GET_TIME) {
+        return false;
+    }
+
+    /* Check status param at offset 6 (descriptor 0x01 = one u8 param) */
+    if (recvPkt[6] != 0) {
+        return false;
+    }
+
+    /* Extract Unix timestamp from payload
+       Payload starts at offset 7 (after header + status param):
+       version(1) + flags(1) + reserved(2) + unixTime(8 LE)
+       unixTime starts at offset 7 + 4 = 11 */
+    i = 11;
+    unixTime = ((unsigned long)recvPkt[i]) |
+               ((unsigned long)recvPkt[i+1] << 8) |
+               ((unsigned long)recvPkt[i+2] << 16) |
+               ((unsigned long)recvPkt[i+3] << 24);
+    
+    /* Convert Unix time to Mac DateTimeRec
+       Note: Mac epoch is Jan 1, 1904; Unix epoch is Jan 1, 1970
+       Difference is 2082844800 seconds */
+    {
+        unsigned long macTime = unixTime + 2082844800UL;
+        SecondsToDate(macTime, &dt);
+    }
+    
+    /* Format as readable string */
+    {
+        char *months[] = {"Jan", "Feb", "Mar", "Apr", "May", "Jun",
+                         "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"};
+        char temp[20];
+        short pos = 0;
+        
+        /* Day of week */
+        char *days[] = {"Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"};
+        char *dow = days[dt.dayOfWeek - 1];
+        while (*dow && pos < maxLen - 1) timeStr[pos++] = *dow++;
+        timeStr[pos++] = ' ';
+        
+        /* Month */
+        char *mon = months[dt.month - 1];
+        while (*mon && pos < maxLen - 1) timeStr[pos++] = *mon++;
+        timeStr[pos++] = ' ';
+        
+        /* Day */
+        if (dt.day >= 10) {
+            timeStr[pos++] = '0' + (dt.day / 10);
+        }
+        timeStr[pos++] = '0' + (dt.day % 10);
+        timeStr[pos++] = ',';
+        timeStr[pos++] = ' ';
+        
+        /* Year */
+        timeStr[pos++] = '0' + (dt.year / 1000);
+        timeStr[pos++] = '0' + ((dt.year / 100) % 10);
+        timeStr[pos++] = '0' + ((dt.year / 10) % 10);
+        timeStr[pos++] = '0' + (dt.year % 10);
+        
+        /* Time */
+        timeStr[pos++] = '\r';
+        timeStr[pos++] = '\r';
+        
+        /* Hour */
+        if (dt.hour >= 10) {
+            timeStr[pos++] = '0' + (dt.hour / 10);
+        }
+        timeStr[pos++] = '0' + (dt.hour % 10);
+        timeStr[pos++] = ':';
+        
+        /* Minute */
+        timeStr[pos++] = '0' + (dt.minute / 10);
+        timeStr[pos++] = '0' + (dt.minute % 10);
+        timeStr[pos++] = ':';
+        
+        /* Second */
+        timeStr[pos++] = '0' + (dt.second / 10);
+        timeStr[pos++] = '0' + (dt.second % 10);
+        
+        timeStr[pos] = '\0';
+    }
+    
+    return true;
 }
 
 /*
@@ -315,7 +511,7 @@ void PollSerialInput(void)
     long i;
     Rect textFrame;
 
-    if (gSerialInRef == 0 || gRecvText == NULL) {
+    if (gSerialInRef == 0 || gRecvText == NULL || gSerialWindow == NULL) {
         return;
     }
 
@@ -335,7 +531,7 @@ void PollSerialInput(void)
     FSRead(gSerialInRef, &count, buffer);
 
     /* Process received characters */
-    SetPort(gMainWindow);
+    SetPort(gSerialWindow);
 
     for (i = 0; i < count; i++) {
         char c = buffer[i];

@@ -20,6 +20,7 @@ extern Boolean gRunning;
 static void HandleAppleMenu(short item);
 static void HandleFileMenu(short item);
 static void HandleEditMenu(short item);
+static void HandleSettingsMenu(short item);
 
 /*
  * Set up the menu bar
@@ -69,6 +70,10 @@ void HandleMenuChoice(long menuChoice)
 
         case kEditMenuID:
             HandleEditMenu(menuItem);
+            break;
+
+        case kSettingsMenuID:
+            HandleSettingsMenu(menuItem);
             break;
     }
 
@@ -147,6 +152,24 @@ static void HandleEditMenu(short item)
 
         case 8: /* Select All */
             TESetSelect(0, 32767, gSendText);
+            break;
+    }
+}
+
+/*
+ * Handle Settings menu items (was Config menu)
+ */
+static void HandleSettingsMenu(short item)
+{
+    switch (item) {
+        case 1: /* Clock... */
+            DoClockDialog();
+            break;
+
+        /* item 2 is separator */
+
+        case 3: /* Serial Testing... */
+            OpenSerialTestingWindow();
             break;
     }
 }

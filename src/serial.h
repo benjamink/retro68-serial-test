@@ -33,6 +33,9 @@ void SendTextToSerial(void);
 /* Send fujinet-nio reset command */
 void SendResetCommand(void);
 
+/* Get clock time from fujinet-nio (returns true if successful) */
+Boolean GetClockTime(char *timeStr, short maxLen);
+
 /* Poll for incoming serial data */
 void PollSerialInput(void);
 

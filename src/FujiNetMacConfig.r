@@ -58,9 +58,21 @@ resource 'MENU' (130) {
     }
 };
 
+/* Settings Menu (was Config) */
+resource 'MENU' (131) {
+    131, textMenuProc;
+    allEnabled, enabled;
+    "Settings";
+    {
+        "Clock...", noIcon, noKey, noMark, plain;
+        "-", noIcon, noKey, noMark, plain;
+        "Serial Testing...", noIcon, noKey, noMark, plain;
+    }
+};
+
 /* Menu Bar */
 resource 'MBAR' (128) {
-    { 128, 129, 130 };
+    { 128, 129, 130, 131 };
 };
 
 /* SIZE resource for MultiFinder */
@@ -270,6 +282,70 @@ resource 'DITL' (129) {
         {5, 10, 105, 255},
         UserItem {
             disabled
+        };
+    }
+};
+
+/* Clock Dialog */
+resource 'DLOG' (130) {
+    {40, 40, 190, 380},
+    dBoxProc,
+    visible,
+    noGoAway,
+    0,
+    130,
+    "",
+    alertPositionMainScreen
+};
+
+resource 'DITL' (130) {
+    {
+        /* Item 1: OK Button */
+        {115, 125, 135, 215},
+        Button {
+            enabled,
+            "OK"
+        };
+        /* Item 2: Title */
+        {10, 20, 30, 320},
+        StaticText {
+            disabled,
+            "FujiNet Clock"
+        };
+        /* Item 3: Time display */
+        {45, 20, 100, 320},
+        StaticText {
+            disabled,
+            "Querying clock..."
+        };
+    }
+};
+
+/* Boot Dialog */
+resource 'DLOG' (131) {
+    {100, 140, 200, 400},
+    dBoxProc,
+    visible,
+    noGoAway,
+    0,
+    131,
+    "",
+    alertPositionMainScreen
+};
+
+resource 'DITL' (131) {
+    {
+        /* Item 1: OK Button */
+        {65, 90, 85, 170},
+        Button {
+            enabled,
+            "OK"
+        };
+        /* Item 2: Booting message */
+        {15, 60, 45, 200},
+        StaticText {
+            disabled,
+            "Booting"
         };
     }
 };

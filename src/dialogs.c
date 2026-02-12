@@ -54,7 +54,7 @@ void DoSettingsDialog(void)
     Boolean done;
     GrafPtr savePort;
 
-    dialog = GetNewDialog(kSettingsDialogID, NULL, (WindowPtr)-1);
+    dialog = GetNewDialog(kSerialDialogID, NULL, (WindowPtr)-1);
     if (dialog == NULL) {
         SysBeep(10);
         return;
@@ -68,43 +68,43 @@ void DoSettingsDialog(void)
     tempBaud = gCurrentBaud;
 
     /* Set port radio buttons */
-    SetRadioButton(dialog, kSettingsModemPort, tempPort == kPortModem);
-    SetRadioButton(dialog, kSettingsPrinterPort, tempPort == kPortPrinter);
+    SetRadioButton(dialog, kSerialSettingsModemPort, tempPort == kPortModem);
+    SetRadioButton(dialog, kSerialSettingsPrinterPort, tempPort == kPortPrinter);
 
     /* Set baud rate radio buttons */
-    SetRadioButton(dialog, kSettingsBaud1200, tempBaud == kBaud1200);
-    SetRadioButton(dialog, kSettingsBaud2400, tempBaud == kBaud2400);
-    SetRadioButton(dialog, kSettingsBaud9600, tempBaud == kBaud9600);
-    SetRadioButton(dialog, kSettingsBaud19200, tempBaud == kBaud19200);
-    SetRadioButton(dialog, kSettingsBaud38400, tempBaud == kBaud38400);
-    SetRadioButton(dialog, kSettingsBaud57600, tempBaud == kBaud57600);
+    SetRadioButton(dialog, kSerialSettingsBaud1200, tempBaud == kBaud1200);
+    SetRadioButton(dialog, kSerialSettingsBaud2400, tempBaud == kBaud2400);
+    SetRadioButton(dialog, kSerialSettingsBaud9600, tempBaud == kBaud9600);
+    SetRadioButton(dialog, kSerialSettingsBaud19200, tempBaud == kBaud19200);
+    SetRadioButton(dialog, kSerialSettingsBaud38400, tempBaud == kBaud38400);
+    SetRadioButton(dialog, kSerialSettingsBaud57600, tempBaud == kBaud57600);
 
     /* Dialog event loop */
     done = false;
     while (!done) {
         ModalDialog(NULL, &itemHit);
 
-        if (itemHit == kSettingsOK) {
+        if (itemHit == kSerialSettingsOK) {
             /* Apply settings and reinitialize serial port */
             gCurrentPort = tempPort;
             gCurrentBaud = tempBaud;
             ReinitializeSerial();
             done = true;
-        } else if (itemHit == kSettingsCancel) {
+        } else if (itemHit == kSerialSettingsCancel) {
             /* Discard changes */
             done = true;
-        } else if (itemHit == kSettingsModemPort || itemHit == kSettingsPrinterPort) {
-            /* Port selection: kSettingsModemPort maps to kPortModem (0),
-               kSettingsPrinterPort maps to kPortPrinter (1) */
-            tempPort = itemHit - kSettingsModemPort;
-            SetRadioButton(dialog, kSettingsModemPort, itemHit == kSettingsModemPort);
-            SetRadioButton(dialog, kSettingsPrinterPort, itemHit == kSettingsPrinterPort);
-        } else if (itemHit >= kSettingsBaud1200 && itemHit <= kSettingsBaud57600) {
+        } else if (itemHit == kSerialSettingsModemPort || itemHit == kSerialSettingsPrinterPort) {
+            /* Port selection: kSerialSettingsModemPort maps to kPortModem (0),
+               kSerialSettingsPrinterPort maps to kPortPrinter (1) */
+            tempPort = itemHit - kSerialSettingsModemPort;
+            SetRadioButton(dialog, kSerialSettingsModemPort, itemHit == kSerialSettingsModemPort);
+            SetRadioButton(dialog, kSerialSettingsPrinterPort, itemHit == kSerialSettingsPrinterPort);
+        } else if (itemHit >= kSerialSettingsBaud1200 && itemHit <= kSerialSettingsBaud57600) {
             /* Baud rate selection: dialog item IDs are consecutive and map
-               directly to kBaud constants (e.g., kSettingsBaud1200 -> kBaud1200) */
+               directly to kBaud constants (e.g., kSerialSettingsBaud1200 -> kBaud1200) */
             short i;
-            tempBaud = itemHit - kSettingsBaud1200;
-            for (i = kSettingsBaud1200; i <= kSettingsBaud57600; i++) {
+            tempBaud = itemHit - kSerialSettingsBaud1200;
+            for (i = kSerialSettingsBaud1200; i <= kSerialSettingsBaud57600; i++) {
                 SetRadioButton(dialog, i, i == itemHit);
             }
         }
@@ -112,4 +112,62 @@ void DoSettingsDialog(void)
 
     SetPort(savePort);
     DisposeDialog(dialog);
+}
+
+/*
+ * Show the Clock dialog
+ */
+void DoClockDialog(void)
+{
+    DialogPtr dialog;
+    short itemHit;
+    short itemType;
+    Handle itemHandle;
+    Rect itemRect;
+    char timeStr[256];
+    Str255 pTimeStr;
+
+    dialog = GetNewDialog(kClockDialogID, NULL, (WindowPtr)-1);
+    if (dialog == NULL) {
+        SysBeep(10);
+        return;
+    }
+
+    /* Try to get clock time from fujinet-nio */
+    if (GetClockTime(timeStr, sizeof(timeStr))) {
+        /* Convert C string to Pascal string */
+        short len = 0;
+        while (timeStr[len] && len < 255) {
+            pTimeStr[len + 1] = timeStr[len];
+            len++;
+        }
+        pTimeStr[0] = len;
+
+        /* Update the time display text (item 3) */
+        GetDialogItem(dialog, 3, &itemType, &itemHandle, &itemRect);
+        SetDialogItemText(itemHandle, pTimeStr);
+    } else {
+        /* Show error message */
+        GetDialogItem(dialog, 3, &itemType, &itemHandle, &itemRect);
+        SetDialogItemText(itemHandle, "\pError: Could not read clock");
+    }
+
+    /* Wait for OK button */
+    ModalDialog(NULL, &itemHit);
+    DisposeDialog(dialog);
+}
+
+/*
+ * Show the Booting dialog
+ */
+void DoBootDialog(void)
+{
+    DialogPtr dialog;
+    short itemHit;
+
+    dialog = GetNewDialog(kBootDialogID, NULL, (WindowPtr)-1);
+    if (dialog != NULL) {
+        ModalDialog(NULL, &itemHit);
+        DisposeDialog(dialog);
+    }
 }

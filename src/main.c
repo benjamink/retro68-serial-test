@@ -1,6 +1,7 @@
 /*
  * FujiNet Mac Config - A classic Mac application for FujiNet configuration
- * Displays a window with a text input, a "Send" button, and a receive area.
+ * Displays a main config window with host/disk lists and a logo area.
+ * Serial testing is available from the Settings menu.
  * Communicates with FujiNet over the serial port using the FujiBus protocol.
  */
 
@@ -17,6 +18,7 @@
 #include <ToolUtils.h>
 #include <SegLoad.h>
 #include <Sound.h>
+#include <Lists.h>
 
 #include "constants.h"
 #include "serial.h"
@@ -55,8 +57,8 @@ void main(void)
             HandleEvent(&event);
         }
 
-        /* Blink the text cursor */
-        if (gSendText != NULL) {
+        /* Blink the text cursor in serial testing window if open */
+        if (gSendText != NULL && gSerialWindow != NULL) {
             TEIdle(gSendText);
         }
 
@@ -65,11 +67,13 @@ void main(void)
     }
 
     /* Cleanup */
-    if (gSendText != NULL) {
-        TEDispose(gSendText);
+    CloseSerialTestingWindow();
+
+    if (gHostsList != NULL) {
+        LDispose(gHostsList);
     }
-    if (gRecvText != NULL) {
-        TEDispose(gRecvText);
+    if (gDisksList != NULL) {
+        LDispose(gDisksList);
     }
     if (gMainWindow != NULL) {
         DisposeWindow(gMainWindow);
@@ -112,11 +116,24 @@ static void HandleEvent(EventRecord *event)
             break;
 
         case activateEvt:
-            if (gSendText != NULL) {
-                if (event->modifiers & activeFlag) {
-                    TEActivate(gSendText);
-                } else {
-                    TEDeactivate(gSendText);
+            {
+                WindowPtr evtWindow = (WindowPtr)event->message;
+                Boolean active = (event->modifiers & activeFlag) != 0;
+
+                if (evtWindow == gSerialWindow && gSendText != NULL) {
+                    if (active) {
+                        TEActivate(gSendText);
+                    } else {
+                        TEDeactivate(gSendText);
+                    }
+                }
+                if (evtWindow == gMainWindow) {
+                    if (gHostsList != NULL) {
+                        LActivate(active, gHostsList);
+                    }
+                    if (gDisksList != NULL) {
+                        LActivate(active, gDisksList);
+                    }
                 }
             }
             break;
@@ -131,9 +148,7 @@ static void HandleMouseDown(EventRecord *event)
     WindowPtr window;
     short part;
     long menuChoice;
-    ControlHandle control;
     Point localPoint;
-    Rect textFrame;
 
     part = FindWindow(event->where, &window);
 
@@ -150,29 +165,15 @@ static void HandleMouseDown(EventRecord *event)
         case inContent:
             if (window != FrontWindow()) {
                 SelectWindow(window);
-            } else if (window == gMainWindow) {
-                SetPort(gMainWindow);
+            } else {
+                SetPort(window);
                 localPoint = event->where;
                 GlobalToLocal(&localPoint);
 
-                /* Check if click is in a button */
-                if (FindControl(localPoint, window, &control) == kControlButtonPart) {
-                    if (TrackControl(control, localPoint, NULL) == kControlButtonPart) {
-                        if (control == gSendButton) {
-                            SendTextToSerial();
-                        } else if (control == gResetButton) {
-                            SendResetCommand();
-                        }
-                    }
-                    return;
-                }
-
-                /* Check if click is in text area */
-                if (gSendText != NULL) {
-                    SetRect(&textFrame, kSendLeft, kSendTop, kSendRight, kSendBottom);
-                    if (PtInRect(localPoint, &textFrame)) {
-                        TEClick(localPoint, (event->modifiers & shiftKey) != 0, gSendText);
-                    }
+                if (window == gMainWindow) {
+                    HandleMainWindowClick(window, localPoint, event);
+                } else if (window == gSerialWindow) {
+                    HandleSerialWindowClick(window, localPoint, event);
                 }
             }
             break;
@@ -183,7 +184,11 @@ static void HandleMouseDown(EventRecord *event)
 
         case inGoAway:
             if (TrackGoAway(window, event->where)) {
-                gRunning = false;
+                if (window == gMainWindow) {
+                    gRunning = false;
+                } else if (window == gSerialWindow) {
+                    CloseSerialTestingWindow();
+                }
             }
             break;
     }
@@ -200,14 +205,16 @@ static void HandleKeyDown(EventRecord *event)
 
     /* Check for command key */
     if (event->modifiers & cmdKey) {
-        /* Command+Return sends text */
-        if (key == '\r') {
+        /* Command+Return sends text (only when serial window is frontmost) */
+        if (key == '\r' && gSerialWindow != NULL
+            && FrontWindow() == gSerialWindow) {
             SendTextToSerial();
         } else {
             HandleMenuChoice(MenuKey(key));
         }
-    } else if (gSendText != NULL) {
-        /* Pass key to TextEdit */
+    } else if (gSendText != NULL && gSerialWindow != NULL
+               && FrontWindow() == gSerialWindow) {
+        /* Pass key to TextEdit only when serial window is front */
         TEKey(key, gSendText);
     }
 }
