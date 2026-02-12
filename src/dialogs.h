@@ -5,9 +5,6 @@
 #ifndef DIALOGS_H
 #define DIALOGS_H
 
-/* Show the About dialog */
-void DoAboutDialog(void);
-
 /* Show the Settings dialog */
 void DoSettingsDialog(void);
 
@@ -33,5 +30,9 @@ void DoEditHostDialog(short slotNum);
  * outReadOnly: receives true for Read mode, false for Write mode */
 Boolean DoMountDialog(short hostSlot, const char *filePath,
                       short *outSlot, Boolean *outReadOnly);
+
+/* Show the File Browser dialog for the given host slot (0-7).
+ * Returns true if a disk was mounted, false if cancelled. */
+Boolean DoFileBrowser(short hostSlot);
 
 #endif /* DIALOGS_H */

@@ -4,6 +4,7 @@
 
 #include <Dialogs.h>
 #include <Controls.h>
+#include <Lists.h>
 #include <Windows.h>
 #include <Sound.h>
 
@@ -12,25 +13,9 @@
 #include "constants.h"
 #include "dialogs.h"
 #include "serial.h"
-#include "window.h"
 
 /* Local function prototypes */
 static void SetRadioButton(DialogPtr dialog, short item, Boolean on);
-
-/*
- * Show the About dialog
- */
-void DoAboutDialog(void)
-{
-    DialogPtr dialog;
-    short itemHit;
-
-    dialog = GetNewDialog(kAboutDialogID, NULL, (WindowPtr)-1);
-    if (dialog != NULL) {
-        ModalDialog(NULL, &itemHit);
-        DisposeDialog(dialog);
-    }
-}
 
 /*
  * Set a radio button value
@@ -357,9 +342,6 @@ void DoEditHostDialog(short slotNum)
             /* Send updated host slots to fujinet-nio */
             WriteHostSlots(gHostSlots, kNumHostSlots);
 
-            /* Refresh the hosts list display */
-            PopulateHostsList();
-
             done = true;
         } else if (itemHit == kEditHostCancel) {
             done = true;
@@ -451,4 +433,357 @@ Boolean DoMountDialog(short hostSlot, const char *filePath,
     SetPort(savePort);
     DisposeDialog(dialog);
     return false;
+}
+
+/* ================================================================
+ * File Browser (modal dialog version)
+ * ================================================================ */
+
+/* File browser state (file-scope statics) */
+static ListHandle sBrowserList;
+static short sBrowserHostSlot;
+static char sBrowserFsName[32];
+static char sBrowserPath[256];
+static DirEntry sBrowserEntries[kMaxBrowserEntries];
+static short sBrowserEntryCount;
+static short sBrowserSelectedIdx;
+
+/*
+ * Refresh the browser list from the current directory path.
+ */
+static void BrowserRefresh(DialogPtr dialog)
+{
+    short itemType;
+    Handle itemHandle;
+    Rect itemRect;
+    Boolean hasMore;
+    short i, j;
+    Cell theCell;
+
+    /* Query directory contents */
+    sBrowserEntryCount = 0;
+    hasMore = false;
+
+    ListDirectory(sBrowserFsName, sBrowserPath,
+                  0, kMaxBrowserEntries,
+                  sBrowserEntries, &sBrowserEntryCount, &hasMore);
+
+    /* Resize list to match entry count */
+    if (sBrowserList != NULL) {
+        LDelRow(0, 0, sBrowserList);
+        if (sBrowserEntryCount > 0) {
+            LAddRow(sBrowserEntryCount, 0, sBrowserList);
+        }
+
+        /* Populate list cells */
+        for (i = 0; i < sBrowserEntryCount; i++) {
+            char displayStr[80];
+            short pos = 0;
+
+            for (j = 0; sBrowserEntries[i].name[j] != '\0' && pos < 76; j++) {
+                displayStr[pos++] = sBrowserEntries[i].name[j];
+            }
+            if (sBrowserEntries[i].isDir && pos < 79) {
+                displayStr[pos++] = '/';
+            }
+
+            SetPt(&theCell, 0, i);
+            LSetCell(displayStr, pos, theCell, sBrowserList);
+        }
+    }
+
+    /* Update path display (item 4) */
+    {
+        Str255 pPath;
+        short len = strlen(sBrowserPath);
+        if (len > 255) len = 255;
+        pPath[0] = len;
+        memcpy(&pPath[1], sBrowserPath, len);
+        GetDialogItem(dialog, kBrowserDlgPath, &itemType, &itemHandle, &itemRect);
+        SetDialogItemText(itemHandle, pPath);
+    }
+
+    /* Invalidate list area to force redraw */
+    GetDialogItem(dialog, kBrowserDlgList, &itemType, &itemHandle, &itemRect);
+    InvalRect(&itemRect);
+}
+
+/*
+ * Navigate up one directory level.
+ */
+static void BrowserNavigateUp(DialogPtr dialog)
+{
+    short len = strlen(sBrowserPath);
+    if (len > 1) {
+        /* Remove trailing slash if not root */
+        if (sBrowserPath[len - 1] == '/' && len > 1) {
+            len--;
+        }
+        /* Find the last slash */
+        while (len > 0 && sBrowserPath[len - 1] != '/') {
+            len--;
+        }
+        if (len == 0) len = 1;
+        sBrowserPath[len] = '\0';
+        BrowserRefresh(dialog);
+    }
+}
+
+/*
+ * Navigate into a subdirectory by index.
+ */
+static void BrowserNavigateInto(DialogPtr dialog, short idx)
+{
+    short pathLen = strlen(sBrowserPath);
+    short nameLen = strlen(sBrowserEntries[idx].name);
+
+    /* Ensure trailing slash on current path */
+    if (pathLen > 0 && sBrowserPath[pathLen - 1] != '/') {
+        if (pathLen < kMaxPathLen - 1) {
+            sBrowserPath[pathLen++] = '/';
+        }
+    }
+    /* Append directory name + trailing slash */
+    if (pathLen + nameLen < kMaxPathLen - 1) {
+        memcpy(sBrowserPath + pathLen, sBrowserEntries[idx].name, nameLen);
+        pathLen += nameLen;
+        sBrowserPath[pathLen++] = '/';
+        sBrowserPath[pathLen] = '\0';
+        BrowserRefresh(dialog);
+    }
+}
+
+/*
+ * UserItem draw proc for the list area.
+ */
+static pascal void BrowserListDrawProc(DialogPtr dialog, short itemNo)
+{
+    short itemType;
+    Handle itemHandle;
+    Rect itemRect;
+
+    GetDialogItem(dialog, itemNo, &itemType, &itemHandle, &itemRect);
+    FrameRect(&itemRect);
+
+    if (sBrowserList != NULL) {
+        LUpdate(((WindowPtr)dialog)->visRgn, sBrowserList);
+    }
+}
+
+/*
+ * Modal dialog filter proc for the file browser.
+ * Handles mouse clicks in the list area.
+ */
+static pascal Boolean BrowserFilterProc(DialogPtr dialog,
+                                        EventRecord *event,
+                                        short *itemHit)
+{
+    if (event->what == mouseDown) {
+        Point localPt;
+        short itemType;
+        Handle itemHandle;
+        Rect listRect;
+        GrafPtr savePort;
+
+        GetPort(&savePort);
+        SetPort(dialog);
+        localPt = event->where;
+        GlobalToLocal(&localPt);
+
+        GetDialogItem(dialog, kBrowserDlgList, &itemType, &itemHandle, &listRect);
+
+        if (PtInRect(localPt, &listRect) && sBrowserList != NULL) {
+            Boolean dblClick = LClick(localPt, event->modifiers, sBrowserList);
+            if (dblClick) {
+                Cell theCell;
+                SetPt(&theCell, 0, 0);
+                if (LGetSelect(true, &theCell, sBrowserList)) {
+                    short idx = theCell.v;
+                    if (idx >= 0 && idx < sBrowserEntryCount) {
+                        if (sBrowserEntries[idx].isDir) {
+                            BrowserNavigateInto(dialog, idx);
+                        } else {
+                            /* File double-clicked: trigger mount */
+                            sBrowserSelectedIdx = idx;
+                            *itemHit = kBrowserDlgMount;
+                            SetPort(savePort);
+                            return true;
+                        }
+                    }
+                }
+            }
+            SetPort(savePort);
+            return true;  /* We consumed the click */
+        }
+        SetPort(savePort);
+    }
+    return false;
+}
+
+/*
+ * Show the File Browser as a modal dialog.
+ * Returns true if a disk was mounted, false if cancelled.
+ */
+Boolean DoFileBrowser(short hostSlot)
+{
+    DialogPtr dialog;
+    short itemHit;
+    short itemType;
+    Handle itemHandle;
+    Rect itemRect;
+    GrafPtr savePort;
+    Boolean done;
+    Boolean mounted = false;
+    short i;
+    Rect dataBounds;
+    Point cellSize;
+
+    if (hostSlot < 0 || hostSlot >= kNumHostSlots
+        || gHostSlots[hostSlot][0] == '\0') {
+        SysBeep(10);
+        return false;
+    }
+
+    dialog = GetNewDialog(kBrowserDialogID, NULL, (WindowPtr)-1);
+    if (dialog == NULL) {
+        SysBeep(10);
+        return false;
+    }
+
+    GetPort(&savePort);
+    SetPort(dialog);
+
+    /* Initialize browser state */
+    sBrowserHostSlot = hostSlot;
+    for (i = 0; i < 31 && gHostSlots[hostSlot][i] != '\0'; i++) {
+        sBrowserFsName[i] = gHostSlots[hostSlot][i];
+    }
+    sBrowserFsName[i] = '\0';
+    sBrowserPath[0] = '/';
+    sBrowserPath[1] = '\0';
+    sBrowserEntryCount = 0;
+    sBrowserSelectedIdx = -1;
+    sBrowserList = NULL;
+
+    /* Get the UserItem rect for the list area */
+    GetDialogItem(dialog, kBrowserDlgList, &itemType, &itemHandle, &itemRect);
+
+    /* Install the draw proc for the UserItem */
+    SetDialogItem(dialog, kBrowserDlgList, itemType,
+                  (Handle)BrowserListDrawProc, &itemRect);
+
+    /* Create ListHandle inside the UserItem area */
+    {
+        Rect listRect;
+        SetRect(&listRect, itemRect.left + 1, itemRect.top + 1,
+                itemRect.right - 1 - 15, itemRect.bottom - 1);
+        SetRect(&dataBounds, 0, 0, 1, 0);
+        SetPt(&cellSize, itemRect.right - itemRect.left - 2 - 15,
+              kBrowserCellHeight);
+
+        sBrowserList = LNew(&listRect, &dataBounds, cellSize,
+                            0, (WindowPtr)dialog, true, false, false, true);
+    }
+
+    if (sBrowserList != NULL) {
+        (*sBrowserList)->selFlags = lOnlyOne;
+    }
+
+    /* Load initial directory */
+    BrowserRefresh(dialog);
+
+    /* Modal dialog loop */
+    done = false;
+    while (!done) {
+        ModalDialog((ModalFilterProcPtr)BrowserFilterProc, &itemHit);
+
+        switch (itemHit) {
+            case kBrowserDlgMount: {
+                Cell theCell;
+                short idx = -1;
+
+                /* Check if set by filter proc (double-click on file) */
+                if (sBrowserSelectedIdx >= 0) {
+                    idx = sBrowserSelectedIdx;
+                    sBrowserSelectedIdx = -1;
+                } else {
+                    /* Mount button: use current list selection */
+                    SetPt(&theCell, 0, 0);
+                    if (sBrowserList != NULL
+                        && LGetSelect(true, &theCell, sBrowserList)) {
+                        idx = theCell.v;
+                    }
+                }
+
+                if (idx >= 0 && idx < sBrowserEntryCount) {
+                    if (sBrowserEntries[idx].isDir) {
+                        BrowserNavigateInto(dialog, idx);
+                    } else {
+                        /* Build full path */
+                        char fullPath[512];
+                        short pathLen = strlen(sBrowserPath);
+                        short nameLen = strlen(sBrowserEntries[idx].name);
+                        short outSlot;
+                        Boolean outReadOnly;
+
+                        memcpy(fullPath, sBrowserPath, pathLen);
+                        if (pathLen > 0 && fullPath[pathLen - 1] != '/') {
+                            fullPath[pathLen++] = '/';
+                        }
+                        memcpy(fullPath + pathLen,
+                               sBrowserEntries[idx].name, nameLen);
+                        fullPath[pathLen + nameLen] = '\0';
+
+                        if (DoMountDialog(sBrowserHostSlot, fullPath,
+                                          &outSlot, &outReadOnly)) {
+                            /* Mount the disk */
+                            MountDisk(outSlot, outReadOnly,
+                                      sBrowserFsName, fullPath);
+
+                            /* Update disk slot state (outSlot is 1-based) */
+                            {
+                                short slotIdx = outSlot - 1;
+                                if (slotIdx >= 0 && slotIdx < kNumDiskSlots) {
+                                    short k;
+                                    gDiskSlots[slotIdx].mounted = true;
+                                    gDiskSlots[slotIdx].hostSlot =
+                                        sBrowserHostSlot + 1;
+                                    gDiskSlots[slotIdx].readOnly = outReadOnly;
+                                    for (k = 0; fullPath[k] != '\0'
+                                         && k < 255; k++) {
+                                        gDiskSlots[slotIdx].path[k] =
+                                            fullPath[k];
+                                    }
+                                    gDiskSlots[slotIdx].path[k] = '\0';
+                                }
+                            }
+
+                            mounted = true;
+                            done = true;
+                        }
+                    }
+                }
+                break;
+            }
+
+            case kBrowserDlgCancel:
+                done = true;
+                break;
+
+            case kBrowserDlgUp:
+                BrowserNavigateUp(dialog);
+                break;
+        }
+    }
+
+    /* Clean up */
+    if (sBrowserList != NULL) {
+        LDispose(sBrowserList);
+        sBrowserList = NULL;
+    }
+
+    SetPort(savePort);
+    DisposeDialog(dialog);
+
+    return mounted;
 }

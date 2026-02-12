@@ -1,5 +1,5 @@
 #!/bin/bash
-# Build script for FujiNetMacConfig
+# Build script for FujiNetCdev
 
 set -e
 
@@ -18,13 +18,13 @@ make
 cd ..
 
 # Copy disk image to project root
-cp build/FujiNetMacConfig.dsk .
+cp build/FujiNetCdev.dsk .
 
 # Convert to Disk Copy 4.2 format for real Macs
-python3 make_dc42.py build/FujiNetMacConfig.dsk FujiNetMacConfig.img "FujiNet Mac Config"
+python3 make_dc42.py build/FujiNetCdev.dsk FujiNetCdev.img "FujiNet Cdev"
 
 echo ""
 echo "Build complete!"
 echo "Disk images:"
-echo "  FujiNetMacConfig.dsk - Raw HFS (for emulator)"
-echo "  FujiNetMacConfig.img - Disk Copy 4.2 (for real Mac)"
+echo "  FujiNetCdev.dsk - Raw HFS (for emulator)"
+echo "  FujiNetCdev.img - Disk Copy 4.2 (for real Mac)"

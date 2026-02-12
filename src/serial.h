@@ -27,12 +27,6 @@ void CleanupSerial(void);
 /* Close and reopen serial port with new settings */
 Boolean ReinitializeSerial(void);
 
-/* Send text from send TextEdit to serial port */
-void SendTextToSerial(void);
-
-/* Send fujinet-nio reset command */
-void SendResetCommand(void);
-
 /* Get clock time from fujinet-nio (returns true if successful) */
 Boolean GetClockTime(char *timeStr, short maxLen);
 
@@ -57,8 +51,5 @@ Boolean ListDirectory(const char *fsName, const char *path,
 /* Mount a disk image via DiskService (returns true if successful) */
 Boolean MountDisk(short slot, Boolean readOnly,
                   const char *fsName, const char *path);
-
-/* Poll for incoming serial data */
-void PollSerialInput(void);
 
 #endif /* SERIAL_H */

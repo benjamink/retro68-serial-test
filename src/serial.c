@@ -6,16 +6,10 @@
 #include <Serial.h>
 #include <Memory.h>
 #include <Sound.h>
-#include <TextEdit.h>
-#include <Controls.h>
-#include <Windows.h>
-#include <Quickdraw.h>
-#include <ToolUtils.h>
 #include <OSUtils.h>
 
 #include "constants.h"
 #include "serial.h"
-#include "window.h"
 
 /* Serial port driver reference numbers */
 short gSerialOutRef = 0;
@@ -86,33 +80,6 @@ Boolean InitializeSerial(void)
     SerReset(gSerialOutRef, gBaudRates[gCurrentBaud] + stop10 + noParity + data8);
     SerReset(gSerialInRef, gBaudRates[gCurrentBaud] + stop10 + noParity + data8);
 
-    /* Send test message with port and baud info */
-    {
-        char msg[64];
-        char *prefix = "Serial ready: ";
-        char *portName = (gCurrentPort == kPortModem) ? "Modem" : "Printer";
-        char *baudName = gBaudNames[gCurrentBaud];
-        long count = 0;
-
-        /* Build message: "Serial ready: Modem @ 9600\r\n" */
-        while (*prefix) {
-            msg[count++] = *prefix++;
-        }
-        while (*portName) {
-            msg[count++] = *portName++;
-        }
-        msg[count++] = ' ';
-        msg[count++] = '@';
-        msg[count++] = ' ';
-        while (*baudName) {
-            msg[count++] = *baudName++;
-        }
-        msg[count++] = '\r';
-        msg[count++] = '\n';
-
-        FSWrite(gSerialOutRef, &count, msg);
-    }
-
     return true;
 }
 
@@ -138,74 +105,6 @@ Boolean ReinitializeSerial(void)
 {
     CleanupSerial();
     return InitializeSerial();
-}
-
-/*
- * Send the text from the text edit field to the serial port
- * Converts Mac line endings (CR) to CR+LF for serial output
- */
-void SendTextToSerial(void)
-{
-    Handle textHandle;
-    long textLength;
-    long count;
-    char *textPtr;
-    long i;
-    char crlf[2] = {'\r', '\n'};
-
-    if (gSendText == NULL) {
-        return;
-    }
-
-    /* Get the text from TextEdit */
-    textHandle = (Handle)TEGetText(gSendText);
-    textLength = (*gSendText)->teLength;
-
-    if (textLength == 0) {
-        SysBeep(10);
-        return;
-    }
-
-    if (gSerialOutRef == 0) {
-        SysBeep(10);
-        return;
-    }
-
-    /* Lock the handle and get pointer */
-    HLock(textHandle);
-    textPtr = *textHandle;
-
-    /* Write to serial port, converting CR to CR+LF */
-    for (i = 0; i < textLength; i++) {
-        if (textPtr[i] == '\r') {
-            /* Send CR+LF for line endings */
-            count = 2;
-            FSWrite(gSerialOutRef, &count, crlf);
-        } else {
-            /* Send single character */
-            count = 1;
-            FSWrite(gSerialOutRef, &count, &textPtr[i]);
-        }
-    }
-
-    /* Send final CR+LF if text doesn't end with one */
-    if (textLength > 0 && textPtr[textLength - 1] != '\r') {
-        count = 2;
-        FSWrite(gSerialOutRef, &count, crlf);
-    }
-
-    HUnlock(textHandle);
-
-    /* Flash the button to indicate success */
-    if (gSendButton != NULL) {
-        HiliteControl(gSendButton, 1);
-        Delay(8, NULL);
-        HiliteControl(gSendButton, 0);
-    }
-
-    /* Clear the text field */
-    TESetSelect(0, 32767, gSendText);
-    TEDelete(gSendText);
 }
 
 /*
@@ -292,22 +191,6 @@ static void SendFujiBusPacket(unsigned char device, unsigned char command,
     /* Send the SLIP-framed packet */
     count = slipLen;
     FSWrite(gSerialOutRef, &count, slip);
-}
-
-/*
- * Send fujinet-nio reset command over serial
- * Device 0x70 (FujiNet), Command 0xFF (Reset), no payload
- */
-void SendResetCommand(void)
-{
-    SendFujiBusPacket(FUJINET_DEVICE, FUJI_CMD_RESET, NULL, 0);
-
-    /* Flash the button to indicate success */
-    if (gResetButton != NULL) {
-        HiliteControl(gResetButton, 1);
-        Delay(8, NULL);
-        HiliteControl(gResetButton, 0);
-    }
 }
 
 /*
@@ -1095,63 +978,3 @@ md_frame_complete:
     return true;
 }
 
-/*
- * Poll for incoming serial data and display in receive area
- */
-void PollSerialInput(void)
-{
-    long count;
-    char buffer[256];
-    long i;
-    Rect textFrame;
-
-    if (gSerialInRef == 0 || gRecvText == NULL || gSerialWindow == NULL) {
-        return;
-    }
-
-    /* Check how many bytes are available */
-    SerGetBuf(gSerialInRef, &count);
-
-    if (count <= 0) {
-        return;
-    }
-
-    /* Limit to buffer size */
-    if (count > sizeof(buffer)) {
-        count = sizeof(buffer);
-    }
-
-    /* Read the data */
-    FSRead(gSerialInRef, &count, buffer);
-
-    /* Process received characters */
-    SetPort(gSerialWindow);
-
-    for (i = 0; i < count; i++) {
-        char c = buffer[i];
-
-        /* Convert LF to CR for Mac TextEdit */
-        if (c == '\n') {
-            c = '\r';
-        }
-
-        /* Skip CR if followed by LF (handle CRLF) */
-        if (c == '\r' && i + 1 < count && buffer[i + 1] == '\n') {
-            continue;
-        }
-
-        /* Insert character at end of receive text */
-        TESetSelect(32767, 32767, gRecvText);
-        TEKey(c, gRecvText);
-    }
-
-    /* Limit receive buffer size - remove oldest text if too large */
-    if ((*gRecvText)->teLength > kMaxReceiveText) {
-        TESetSelect(0, (*gRecvText)->teLength - kMaxReceiveText, gRecvText);
-        TEDelete(gRecvText);
-    }
-
-    /* Update the receive area */
-    SetRect(&textFrame, kRecvLeft, kRecvTop, kRecvRight, kRecvBottom);
-    InvalRect(&textFrame);
-}

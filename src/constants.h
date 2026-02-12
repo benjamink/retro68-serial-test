@@ -181,7 +181,36 @@
 /* Device Info dialog */
 #define kDeviceInfoDialogID   134
 
-/* Maximum receive buffer size */
-#define kMaxReceiveText 4096
+/* File browser dialog */
+#define kBrowserDialogID      135
+#define kBrowserDlgMount      1
+#define kBrowserDlgCancel     2
+#define kBrowserDlgUp         3
+#define kBrowserDlgPath       4
+#define kBrowserDlgList       5
+
+/* Disk slot state tracking */
+typedef struct {
+    Boolean mounted;
+    short hostSlot;      /* 1-based */
+    Boolean readOnly;
+    char path[256];
+} DiskSlotState;
+
+/* Global host and disk slot data (defined in cdev_main.c) */
+extern char gHostSlots[8][32];
+extern DiskSlotState gDiskSlots[8];
+
+/* cdev panel DITL item numbers (1-based, relative to cdev items) */
+#define kCdevHostsLabel       1
+#define kCdevHostsDisplay     2
+#define kCdevSlotLabel        3
+#define kCdevSlotText         4
+#define kCdevEditHostBtn      5
+#define kCdevBrowseBtn        6
+#define kCdevDisksLabel       7
+#define kCdevDisksDisplay     8
+#define kCdevClockBtn         9
+#define kCdevDeviceInfoBtn    10
 
 #endif /* CONSTANTS_H */
