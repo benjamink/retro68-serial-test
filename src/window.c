@@ -115,7 +115,7 @@ void CreateMainWindow(void)
     SetRect(&btnRect, kBootButtonLeft, kBootButtonTop,
             kBootButtonRight, kBootButtonBottom);
     gBootButton = NewControl(gMainWindow, &btnRect,
-                             "\pBoot Selected Disk",
+                             "\pMount Disks",
                              true, 0, 0, 1, pushButProc, 0);
 
     /* Create Edit Host button (right column, aligned with Boot button) */
@@ -318,15 +318,21 @@ void HandleMainWindowClick(WindowPtr window, Point localPoint, EventRecord *even
     if (FindControl(localPoint, window, &control) == kControlButtonPart) {
         if (TrackControl(control, localPoint, NULL) == kControlButtonPart) {
             if (control == gBootButton) {
-                /* Get the selected disk slot */
-                Cell diskCell;
-                SetPt(&diskCell, 0, 0);
-                if (gDisksList != NULL && LGetSelect(true, &diskCell, gDisksList)
-                    && diskCell.v >= 0 && diskCell.v < kNumDiskSlots
-                    && gDiskSlots[diskCell.v].mounted) {
-                    DoBootDialog(gDiskSlots[diskCell.v].path);
-                } else {
-                    SysBeep(10);
+                /* Show all mounted disks */
+                {
+                    short d;
+                    Boolean anyMounted = false;
+                    for (d = 0; d < kNumDiskSlots; d++) {
+                        if (gDiskSlots[d].mounted) {
+                            anyMounted = true;
+                            break;
+                        }
+                    }
+                    if (anyMounted) {
+                        DoMountDisksDialog();
+                    } else {
+                        SysBeep(10);
+                    }
                 }
             } else if (control == gEditHostButton) {
                 /* Edit the selected host */
@@ -362,7 +368,7 @@ void HandleMainWindowClick(WindowPtr window, Point localPoint, EventRecord *even
         return;
     }
 
-    /* Check disks list click - double-click boots selected disk */
+    /* Check disks list click - double-click mounts selected disk */
     SetRect(&listRect, kDisksListLeft, kDisksListTop,
             kDisksListRight, kDisksListBottom);
     if (PtInRect(localPoint, &listRect) && gDisksList != NULL) {
@@ -373,7 +379,7 @@ void HandleMainWindowClick(WindowPtr window, Point localPoint, EventRecord *even
             if (LGetSelect(true, &diskCell, gDisksList)
                 && diskCell.v >= 0 && diskCell.v < kNumDiskSlots
                 && gDiskSlots[diskCell.v].mounted) {
-                DoBootDialog(gDiskSlots[diskCell.v].path);
+                DoMountDiskDialog(gDiskSlots[diskCell.v].path);
             }
         }
         return;

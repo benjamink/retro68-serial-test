@@ -139,18 +139,18 @@ resource 'DITL' (128) {
     }
 };
 
-/* Application icon - FujiNet symbol (white on black) */
+/* Application icon - FujiNet logo (white on black) */
 resource 'ICN#' (128, purgeable) {
     {
         /* Icon */
-        $"FFFF FFFF FFFC 3FFF FFF8 1FFF FFF2 4FFF"
-        $"FFF2 4FFF FFF2 4FFF FFB8 1DFF FE0C 307F"
-        $"FC06 603F FCA6 653F F806 601F FCA6 653F"
-        $"FC00 003F FE00 007F FFF2 4FFF F800 001F"
-        $"F800 001F FFF2 4FFF FE00 007F FC00 003F"
-        $"FCA6 653F F806 601F FCA6 653F FC06 603F"
-        $"FE0C 307F FFB8 1DFF FFF2 4FFF FFF2 4FFF"
-        $"FFF2 4FFF FFF8 1FFF FFFC 3FFF FFFF FFFF",
+        $"FFFF DFFF FFFF DFFF FFFF DFFF FFFF CFFF"
+        $"FFFF 03FF FFFE 01FF FFDE 01EF FFDC 00EF"
+        $"FE00 0003 FFDE 01EF FFDE 01EF FFDF 03EF"
+        $"FF0F 87C7 FE06 0301 FC02 0001 BC00 0000"
+        $"8000 0000 BC00 0000 BC00 0000 BE02 0301"
+        $"FF07 0783 FFDF DF83 FFDF DF01 FFDF DE00"
+        $"FFDF DE00 FF00 0000 FFDF DE00 FFDF DE01"
+        $"FFDF DF01 FFDF DF87 FFFF DFEF FFFF DFEF",
         /* Mask */
         $"FFFF FFFF FFFF FFFF FFFF FFFF FFFF FFFF"
         $"FFFF FFFF FFFF FFFF FFFF FFFF FFFF FFFF"
@@ -159,12 +159,12 @@ resource 'ICN#' (128, purgeable) {
     }
 };
 
-/* Small icon - FujiNet symbol (white on black) */
+/* Small icon - FujiNet logo (white on black) */
 resource 'ics#' (128, purgeable) {
     {
         /* Icon */
-        $"FE7F FC3F FC3F FC3F F66F E247 C003 C003"
-        $"C003 E007 C003 C003 C003 E007 FC3F FE7F",
+        $"FFFF FFBF FF1F FA0B FA0B FF1F F111 E000"
+        $"4000 E000 F331 FFF0 FBA0 FFE0 FFF1 FFFF",
         /* Mask */
         $"FFFF FFFF FFFF FFFF FFFF FFFF FFFF FFFF"
         $"FFFF FFFF FFFF FFFF FFFF FFFF FFFF FFFF"
@@ -318,9 +318,9 @@ resource 'DITL' (130) {
     }
 };
 
-/* Boot Dialog */
+/* Mount Disks Dialog */
 resource 'DLOG' (131) {
-    {100, 80, 200, 420},
+    {80, 80, 280, 420},
     dBoxProc,
     visible,
     noGoAway,
@@ -333,16 +333,16 @@ resource 'DLOG' (131) {
 resource 'DITL' (131) {
     {
         /* Item 1: OK Button */
-        {65, 120, 85, 200},
+        {165, 120, 185, 200},
         Button {
             enabled,
             "OK"
         };
-        /* Item 2: Booting message (filled by code) */
-        {15, 20, 50, 320},
+        /* Item 2: Mounting message (filled by code) */
+        {10, 20, 155, 320},
         StaticText {
             disabled,
-            "Booting"
+            "Mounting disks:"
         };
     }
 };

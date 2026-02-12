@@ -161,9 +161,9 @@ void DoClockDialog(void)
 }
 
 /*
- * Show the Booting dialog with the selected disk file name
+ * Show the "Mounting disk:" dialog for a single disk (double-click)
  */
-void DoBootDialog(const char *diskFile)
+void DoMountDiskDialog(const char *diskFile)
 {
     DialogPtr dialog;
     short itemHit;
@@ -176,10 +176,10 @@ void DoBootDialog(const char *diskFile)
         return;
     }
 
-    /* Build "Booting <file>" message in item 2 */
+    /* Build "Mounting disk: <file>" message in item 2 */
     {
         Str255 msg;
-        char *prefix = "Booting ";
+        char *prefix = "Mounting disk: ";
         short pos = 1;
         short i;
 
@@ -191,6 +191,66 @@ void DoBootDialog(const char *diskFile)
         }
         msg[0] = pos - 1;
 
+        GetDialogItem(dialog, 2, &itemType, &itemHandle, &itemRect);
+        SetDialogItemText(itemHandle, msg);
+    }
+
+    ModalDialog(NULL, &itemHit);
+    DisposeDialog(dialog);
+}
+
+/*
+ * Show the "Mounting disks:" dialog listing all populated disk slots
+ */
+void DoMountDisksDialog(void)
+{
+    DialogPtr dialog;
+    short itemHit;
+    short itemType;
+    Handle itemHandle;
+    Rect itemRect;
+    char buf[512];
+    short pos;
+    short i, j;
+
+    dialog = GetNewDialog(kBootDialogID, NULL, (WindowPtr)-1);
+    if (dialog == NULL) {
+        return;
+    }
+
+    /* Build message listing all mounted disks */
+    pos = 0;
+    {
+        char *header = "Mounting disks:";
+        while (*header && pos < 500) {
+            buf[pos++] = *header++;
+        }
+    }
+
+    for (i = 0; i < kNumDiskSlots; i++) {
+        if (gDiskSlots[i].mounted) {
+            /* Add newline */
+            if (pos < 500) buf[pos++] = '\r';
+            /* Slot number */
+            if (pos < 500) buf[pos++] = '0' + (i + 1);
+            if (pos < 500) buf[pos++] = gDiskSlots[i].readOnly ? 'R' : 'W';
+            if (pos < 500) buf[pos++] = ' ';
+            /* Path */
+            for (j = 0; gDiskSlots[i].path[j] != '\0' && pos < 500; j++) {
+                buf[pos++] = gDiskSlots[i].path[j];
+            }
+        }
+    }
+
+    /* Convert to Pascal string and set dialog text */
+    {
+        Str255 msg;
+        short len = pos < 255 ? pos : 255;
+        short k;
+        msg[0] = len;
+        for (k = 0; k < len; k++) {
+            msg[k + 1] = buf[k];
+        }
         GetDialogItem(dialog, 2, &itemType, &itemHandle, &itemRect);
         SetDialogItemText(itemHandle, msg);
     }

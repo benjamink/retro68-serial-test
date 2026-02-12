@@ -14,8 +14,11 @@ void DoSettingsDialog(void);
 /* Show the Clock dialog */
 void DoClockDialog(void);
 
-/* Show the Booting dialog with the selected disk file name */
-void DoBootDialog(const char *diskFile);
+/* Show the "Mounting disk:" dialog for a single disk (double-click) */
+void DoMountDiskDialog(const char *diskFile);
+
+/* Show the "Mounting disks:" dialog listing all populated disk slots */
+void DoMountDisksDialog(void);
 
 /* Show the Device Info dialog */
 void DoDeviceInfoDialog(void);
