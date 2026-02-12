@@ -16,7 +16,14 @@
 #define kSerialDialogID   129
 #define kClockDialogID    130
 #define kBootDialogID     131
+#define kEditHostDialogID 132
 #define kSendButtonID     128
+
+/* Edit host dialog item IDs */
+#define kEditHostOK       1
+#define kEditHostCancel   2
+#define kEditHostLabel    3
+#define kEditHostText     4
 
 /* Serial settings dialog item IDs */
 #define kSerialSettingsOK         1
@@ -57,7 +64,7 @@
 #define kHostsListLeft      8
 #define kHostsListTop       20
 #define kHostsListRight     330
-#define kHostsListBottom    170
+#define kHostsListBottom    140
 
 /* Logo area (right column, extends from Hosts top to Disks bottom) */
 #define kLogoLeft           338
@@ -67,12 +74,12 @@
 
 /* Disks section layout (left column, below Hosts) */
 #define kDisksHeaderLeft    8
-#define kDisksHeaderTop     176
+#define kDisksHeaderTop     146
 #define kDisksHeaderRight   330
-#define kDisksHeaderBottom  190
+#define kDisksHeaderBottom  160
 
 #define kDisksListLeft      8
-#define kDisksListTop       190
+#define kDisksListTop       160
 #define kDisksListRight     330
 #define kDisksListBottom    252
 
@@ -85,8 +92,9 @@
 /* List cell dimensions */
 #define kHostCellHeight     15
 #define kDiskCellHeight     15
-#define kNumHostSlots       10
+#define kNumHostSlots       8
 #define kNumDiskSlots       8
+#define kMaxHostnameLen     32
 
 /* Serial testing window dimensions */
 #define kSerialWindowWidth    320
@@ -114,6 +122,64 @@
 #define kRecvTop        122
 #define kRecvRight      310
 #define kRecvBottom     185
+
+/* Edit Host button (right column, aligned with Boot button) */
+#define kEditHostBtnLeft    338
+#define kEditHostBtnTop     262
+#define kEditHostBtnRight   472
+#define kEditHostBtnBottom  284
+
+/* File browser window */
+#define kBrowserWindowWidth   350
+#define kBrowserWindowHeight  280
+
+#define kBrowserPathLeft      10
+#define kBrowserPathTop       8
+#define kBrowserPathRight     340
+#define kBrowserPathBottom    22
+
+#define kBrowserListLeft      10
+#define kBrowserListTop       24
+#define kBrowserListRight     340
+#define kBrowserListBottom    230
+
+#define kBrowserCellHeight    15
+#define kMaxBrowserEntries    32
+
+#define kBrowserUpBtnLeft     10
+#define kBrowserUpBtnTop      240
+#define kBrowserUpBtnRight    80
+#define kBrowserUpBtnBottom   260
+
+#define kBrowserCloseBtnLeft  270
+#define kBrowserCloseBtnTop   240
+#define kBrowserCloseBtnRight 340
+#define kBrowserCloseBtnBottom 260
+
+/* Mount dialog */
+#define kMountDialogID        133
+
+#define kMountOK              1
+#define kMountCancel          2
+#define kMountFileLabel       3
+#define kMountFilePath        4
+#define kMountSlotLabel       5
+#define kMountSlot1           6
+#define kMountSlot2           7
+#define kMountSlot3           8
+#define kMountSlot4           9
+#define kMountSlot5           10
+#define kMountSlot6           11
+#define kMountSlot7           12
+#define kMountSlot8           13
+#define kMountModeLabel       14
+#define kMountRead            15
+#define kMountWrite           16
+
+#define kMaxPathLen           256
+
+/* Device Info dialog */
+#define kDeviceInfoDialogID   134
 
 /* Maximum receive buffer size */
 #define kMaxReceiveText 4096

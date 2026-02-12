@@ -166,9 +166,13 @@ static void HandleSettingsMenu(short item)
             DoClockDialog();
             break;
 
-        /* item 2 is separator */
+        case 2: /* Device Info... */
+            DoDeviceInfoDialog();
+            break;
 
-        case 3: /* Serial Testing... */
+        /* item 3 is separator */
+
+        case 4: /* Serial Testing... */
             OpenSerialTestingWindow();
             break;
     }

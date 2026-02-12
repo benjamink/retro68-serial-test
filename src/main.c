@@ -51,6 +51,26 @@ void main(void)
 
     CreateMainWindow();
 
+    /* Read host slots from fujinet-nio and populate the list */
+    if (gSerialOutRef != 0) {
+        /* Explicitly zero host slots in case DATA segment init is unreliable */
+        short s, b;
+        for (s = 0; s < kNumHostSlots; s++) {
+            for (b = 0; b < 32; b++) {
+                gHostSlots[s][b] = 0;
+            }
+        }
+        if (!ReadHostSlots(gHostSlots, kNumHostSlots)) {
+            /* Default first host slot to "host" (POSIX filesystem name) */
+            gHostSlots[0][0] = 'h';
+            gHostSlots[0][1] = 'o';
+            gHostSlots[0][2] = 's';
+            gHostSlots[0][3] = 't';
+            gHostSlots[0][4] = '\0';
+        }
+        PopulateHostsList();
+    }
+
     /* Main event loop */
     while (gRunning) {
         if (WaitNextEvent(everyEvent, &event, 5, NULL)) {
@@ -67,6 +87,7 @@ void main(void)
     }
 
     /* Cleanup */
+    CloseFileBrowser();
     CloseSerialTestingWindow();
 
     if (gHostsList != NULL) {
@@ -135,6 +156,9 @@ static void HandleEvent(EventRecord *event)
                         LActivate(active, gDisksList);
                     }
                 }
+                if (evtWindow == gBrowserWindow) {
+                    /* Browser list activation is handled internally */
+                }
             }
             break;
     }
@@ -174,6 +198,8 @@ static void HandleMouseDown(EventRecord *event)
                     HandleMainWindowClick(window, localPoint, event);
                 } else if (window == gSerialWindow) {
                     HandleSerialWindowClick(window, localPoint, event);
+                } else if (window == gBrowserWindow) {
+                    HandleBrowserWindowClick(window, localPoint, event);
                 }
             }
             break;
@@ -188,6 +214,8 @@ static void HandleMouseDown(EventRecord *event)
                     gRunning = false;
                 } else if (window == gSerialWindow) {
                     CloseSerialTestingWindow();
+                } else if (window == gBrowserWindow) {
+                    CloseFileBrowser();
                 }
             }
             break;

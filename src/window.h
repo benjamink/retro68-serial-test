@@ -15,6 +15,23 @@ extern WindowPtr gMainWindow;
 extern ListHandle gHostsList;
 extern ListHandle gDisksList;
 extern ControlHandle gBootButton;
+extern ControlHandle gEditHostButton;
+
+/* Host slot data from fujinet-nio */
+extern char gHostSlots[8][32];
+
+/* Disk slot state tracking */
+typedef struct {
+    Boolean mounted;
+    short hostSlot;      /* 1-based */
+    Boolean readOnly;
+    char path[256];
+} DiskSlotState;
+
+extern DiskSlotState gDiskSlots[8];
+
+/* File browser window */
+extern WindowPtr gBrowserWindow;
 
 /* Serial testing window (modeless, opened from Settings menu) */
 extern WindowPtr gSerialWindow;
@@ -27,6 +44,14 @@ extern ControlHandle gResetButton;
 void CreateMainWindow(void);
 void UpdateMainWindow(WindowPtr window);
 void HandleMainWindowClick(WindowPtr window, Point localPoint, EventRecord *event);
+void PopulateHostsList(void);
+void PopulateDisksList(void);
+
+/* File browser functions */
+void OpenFileBrowser(short hostSlot);
+void CloseFileBrowser(void);
+void UpdateBrowserWindow(WindowPtr window);
+void HandleBrowserWindowClick(WindowPtr window, Point localPoint, EventRecord *event);
 
 /* Serial testing window functions */
 void OpenSerialTestingWindow(void);

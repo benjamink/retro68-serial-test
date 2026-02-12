@@ -244,8 +244,8 @@ static unsigned char CalcFujiChecksum(unsigned char *data, short length)
 static void SendFujiBusPacket(unsigned char device, unsigned char command,
                               unsigned char *payload, short payloadLen)
 {
-    unsigned char pkt[64];   /* raw FujiBus packet */
-    unsigned char slip[130]; /* SLIP-encoded output (worst case 2x + 2) */
+    unsigned char pkt[520];  /* raw FujiBus packet (up to 512-byte payload) */
+    unsigned char slip[1050]; /* SLIP-encoded output (worst case 2x + 2) */
     short pktLen;
     short slipLen;
     short i;
@@ -498,6 +498,600 @@ frame_complete:
         timeStr[pos] = '\0';
     }
     
+    return true;
+}
+
+/*
+ * Read host slots from fujinet-nio
+ * Device 0x70 (FujiNet), Command 0xF4 (ReadHostSlots), no payload
+ * Response payload: 8 slots x 32 bytes = 256 bytes of null-terminated strings
+ * Returns true if successful, fills hostSlots array
+ */
+Boolean ReadHostSlots(char hostSlots[][32], short numSlots)
+{
+    unsigned char recvSlip[600];
+    unsigned char recvPkt[300];
+    short recvPktLen;
+    long count;
+    long startTicks;
+    long timeout = 300;  /* 5 second timeout */
+    short i;
+    Boolean inFrame;
+    Boolean escaped;
+
+    #define FUJINET_DEVICE_ID   0x70
+    #define FUJI_CMD_READ_HOST_SLOTS  0xF4
+
+    if (gSerialOutRef == 0 || gSerialInRef == 0) {
+        return false;
+    }
+
+    /* Flush any pending input */
+    SerGetBuf(gSerialInRef, &count);
+    if (count > 0) {
+        unsigned char dummy[256];
+        if (count > sizeof(dummy)) count = sizeof(dummy);
+        FSRead(gSerialInRef, &count, dummy);
+    }
+
+    /* Send ReadHostSlots command */
+    SendFujiBusPacket(FUJINET_DEVICE_ID, FUJI_CMD_READ_HOST_SLOTS, NULL, 0);
+
+    /* Wait for response with timeout */
+    startTicks = TickCount();
+    recvPktLen = 0;
+    inFrame = false;
+    escaped = false;
+
+    while ((TickCount() - startTicks) < timeout) {
+        SerGetBuf(gSerialInRef, &count);
+
+        if (count > 0) {
+            if (count > sizeof(recvSlip)) count = sizeof(recvSlip);
+            FSRead(gSerialInRef, &count, recvSlip);
+
+            /* Process SLIP frame */
+            for (i = 0; i < count; i++) {
+                unsigned char b = recvSlip[i];
+
+                if (b == SLIP_END) {
+                    if (inFrame && recvPktLen > 0) {
+                        goto rhs_frame_complete;
+                    }
+                    inFrame = true;
+                    recvPktLen = 0;
+                    escaped = false;
+                } else if (escaped) {
+                    if (b == SLIP_ESC_END) {
+                        recvPkt[recvPktLen++] = SLIP_END;
+                    } else if (b == SLIP_ESC_ESC) {
+                        recvPkt[recvPktLen++] = SLIP_ESCAPE;
+                    }
+                    escaped = false;
+                } else if (b == SLIP_ESCAPE) {
+                    escaped = true;
+                } else if (inFrame && recvPktLen < sizeof(recvPkt)) {
+                    recvPkt[recvPktLen++] = b;
+                }
+            }
+        }
+
+        Delay(1, NULL);
+    }
+
+    /* Timeout */
+    return false;
+
+rhs_frame_complete:
+    /* Validate: header(6) + status(1) + payload(256) = 263 bytes minimum */
+    if (recvPktLen < 263) {
+        return false;
+    }
+
+    /* Verify checksum */
+    {
+        unsigned char savedChecksum = recvPkt[4];
+        unsigned char calcChecksum;
+        recvPkt[4] = 0;
+        calcChecksum = CalcFujiChecksum(recvPkt, recvPktLen);
+        recvPkt[4] = savedChecksum;
+        if (calcChecksum != savedChecksum) {
+            return false;
+        }
+    }
+
+    /* Check device and command match */
+    if (recvPkt[0] != FUJINET_DEVICE_ID || recvPkt[1] != FUJI_CMD_READ_HOST_SLOTS) {
+        return false;
+    }
+
+    /* Check status */
+    if (recvPkt[6] != 0) {
+        return false;
+    }
+
+    /* Copy payload into hostSlots array (starts at offset 7) */
+    {
+        short slot;
+        for (slot = 0; slot < numSlots && slot < 8; slot++) {
+            for (i = 0; i < 32; i++) {
+                hostSlots[slot][i] = recvPkt[7 + slot * 32 + i];
+            }
+            /* Ensure null termination even if slot is full */
+            hostSlots[slot][31] = '\0';
+        }
+    }
+
+    return true;
+}
+
+/*
+ * Write host slots to fujinet-nio
+ * Device 0x70 (FujiNet), Command 0xF3 (WriteHostSlots)
+ * Payload: 8 slots x 32 bytes = 256 bytes of null-terminated strings
+ * Returns true if response received with success status
+ */
+Boolean WriteHostSlots(char hostSlots[][32], short numSlots)
+{
+    unsigned char payload[256];
+    unsigned char recvSlip[256];
+    unsigned char recvPkt[128];
+    short recvPktLen;
+    long count;
+    long startTicks;
+    long timeout = 300;  /* 5 second timeout */
+    short i, slot;
+    Boolean inFrame;
+    Boolean escaped;
+
+    #define FUJI_CMD_WRITE_HOST_SLOTS 0xF3
+
+    if (gSerialOutRef == 0 || gSerialInRef == 0) {
+        return false;
+    }
+
+    /* Build 256-byte payload from hostSlots */
+    for (i = 0; i < 256; i++) {
+        payload[i] = 0;
+    }
+    for (slot = 0; slot < numSlots && slot < 8; slot++) {
+        for (i = 0; i < 32; i++) {
+            payload[slot * 32 + i] = (unsigned char)hostSlots[slot][i];
+        }
+    }
+
+    /* Flush any pending input */
+    SerGetBuf(gSerialInRef, &count);
+    if (count > 0) {
+        unsigned char dummy[256];
+        if (count > sizeof(dummy)) count = sizeof(dummy);
+        FSRead(gSerialInRef, &count, dummy);
+    }
+
+    /* Send WriteHostSlots command with payload */
+    SendFujiBusPacket(FUJINET_DEVICE_ID, FUJI_CMD_WRITE_HOST_SLOTS, payload, 256);
+
+    /* Wait for response with timeout */
+    startTicks = TickCount();
+    recvPktLen = 0;
+    inFrame = false;
+    escaped = false;
+
+    while ((TickCount() - startTicks) < timeout) {
+        SerGetBuf(gSerialInRef, &count);
+
+        if (count > 0) {
+            if (count > sizeof(recvSlip)) count = sizeof(recvSlip);
+            FSRead(gSerialInRef, &count, recvSlip);
+
+            for (i = 0; i < count; i++) {
+                unsigned char b = recvSlip[i];
+
+                if (b == SLIP_END) {
+                    if (inFrame && recvPktLen > 0) {
+                        goto whs_frame_complete;
+                    }
+                    inFrame = true;
+                    recvPktLen = 0;
+                    escaped = false;
+                } else if (escaped) {
+                    if (b == SLIP_ESC_END) {
+                        recvPkt[recvPktLen++] = SLIP_END;
+                    } else if (b == SLIP_ESC_ESC) {
+                        recvPkt[recvPktLen++] = SLIP_ESCAPE;
+                    }
+                    escaped = false;
+                } else if (b == SLIP_ESCAPE) {
+                    escaped = true;
+                } else if (inFrame && recvPktLen < sizeof(recvPkt)) {
+                    recvPkt[recvPktLen++] = b;
+                }
+            }
+        }
+
+        Delay(1, NULL);
+    }
+
+    /* Timeout */
+    return false;
+
+whs_frame_complete:
+    /* Validate: at least header(6) + status(1) = 7 bytes */
+    if (recvPktLen < 7) {
+        return false;
+    }
+
+    /* Verify checksum */
+    {
+        unsigned char savedChecksum = recvPkt[4];
+        unsigned char calcChecksum;
+        recvPkt[4] = 0;
+        calcChecksum = CalcFujiChecksum(recvPkt, recvPktLen);
+        recvPkt[4] = savedChecksum;
+        if (calcChecksum != savedChecksum) {
+            return false;
+        }
+    }
+
+    /* Check device and command match */
+    if (recvPkt[0] != FUJINET_DEVICE_ID || recvPkt[1] != FUJI_CMD_WRITE_HOST_SLOTS) {
+        return false;
+    }
+
+    /* Check status */
+    if (recvPkt[6] != 0) {
+        return false;
+    }
+
+    return true;
+}
+
+/*
+ * List directory contents via FileService
+ * Device 0xFE (FileService), Command 0x02 (ListDirectory)
+ *
+ * Request payload:
+ *   u8  version (1)
+ *   u8  fsNameLen
+ *   u8[] fsName
+ *   u16 pathLen (LE)
+ *   u8[] path
+ *   u16 startIndex (LE)
+ *   u16 maxEntries (LE)
+ *
+ * Response payload (at offset 7):
+ *   u8  version
+ *   u8  flags (bit0=more entries)
+ *   u16 reserved
+ *   u16 count (LE)
+ *   entries: u8 flags (bit0=isDir) + u8 nameLen + name + u64 size + u64 modTime
+ */
+Boolean ListDirectory(const char *fsName, const char *path,
+                      short startIndex, short maxEntries,
+                      DirEntry *entries, short *entryCount,
+                      Boolean *hasMore)
+{
+    unsigned char payload[512];
+    unsigned char recvSlip[4096];
+    unsigned char recvPkt[2048];
+    short recvPktLen;
+    long count;
+    long startTicks;
+    long timeout = 300;  /* 5 second timeout */
+    short i, pos;
+    Boolean inFrame;
+    Boolean escaped;
+    short fsNameLen, pathLen;
+
+    #define FILE_SERVICE_DEVICE 0xFE
+    #define FILE_CMD_LIST_DIR   0x02
+
+    if (gSerialOutRef == 0 || gSerialInRef == 0) {
+        return false;
+    }
+
+    /* Measure string lengths */
+    for (fsNameLen = 0; fsName[fsNameLen] != '\0' && fsNameLen < 255; fsNameLen++) {}
+    for (pathLen = 0; path[pathLen] != '\0' && pathLen < 255; pathLen++) {}
+
+    /* Build request payload */
+    pos = 0;
+    payload[pos++] = 1;  /* version */
+    payload[pos++] = (unsigned char)fsNameLen;
+    for (i = 0; i < fsNameLen; i++) {
+        payload[pos++] = (unsigned char)fsName[i];
+    }
+    payload[pos++] = (unsigned char)(pathLen & 0xFF);
+    payload[pos++] = (unsigned char)((pathLen >> 8) & 0xFF);
+    for (i = 0; i < pathLen; i++) {
+        payload[pos++] = (unsigned char)path[i];
+    }
+    payload[pos++] = (unsigned char)(startIndex & 0xFF);
+    payload[pos++] = (unsigned char)((startIndex >> 8) & 0xFF);
+    payload[pos++] = (unsigned char)(maxEntries & 0xFF);
+    payload[pos++] = (unsigned char)((maxEntries >> 8) & 0xFF);
+
+    /* Flush any pending input */
+    SerGetBuf(gSerialInRef, &count);
+    if (count > 0) {
+        unsigned char dummy[256];
+        if (count > sizeof(dummy)) count = sizeof(dummy);
+        FSRead(gSerialInRef, &count, dummy);
+    }
+
+    /* Send ListDirectory command */
+    SendFujiBusPacket(FILE_SERVICE_DEVICE, FILE_CMD_LIST_DIR,
+                      payload, pos);
+
+    /* Wait for response with timeout */
+    startTicks = TickCount();
+    recvPktLen = 0;
+    inFrame = false;
+    escaped = false;
+
+    while ((TickCount() - startTicks) < timeout) {
+        SerGetBuf(gSerialInRef, &count);
+
+        if (count > 0) {
+            if (count > sizeof(recvSlip)) count = sizeof(recvSlip);
+            FSRead(gSerialInRef, &count, recvSlip);
+
+            for (i = 0; i < count; i++) {
+                unsigned char b = recvSlip[i];
+
+                if (b == SLIP_END) {
+                    if (inFrame && recvPktLen > 0) {
+                        goto ld_frame_complete;
+                    }
+                    inFrame = true;
+                    recvPktLen = 0;
+                    escaped = false;
+                } else if (escaped) {
+                    if (b == SLIP_ESC_END) {
+                        recvPkt[recvPktLen++] = SLIP_END;
+                    } else if (b == SLIP_ESC_ESC) {
+                        recvPkt[recvPktLen++] = SLIP_ESCAPE;
+                    }
+                    escaped = false;
+                } else if (b == SLIP_ESCAPE) {
+                    escaped = true;
+                } else if (inFrame && recvPktLen < sizeof(recvPkt)) {
+                    recvPkt[recvPktLen++] = b;
+                }
+            }
+        }
+
+        Delay(1, NULL);
+    }
+
+    /* Timeout */
+    return false;
+
+ld_frame_complete:
+    /* Validate: header(6) + status(1) + payload header(6) = 13 bytes minimum */
+    if (recvPktLen < 13) {
+        return false;
+    }
+
+    /* Verify checksum */
+    {
+        unsigned char savedChecksum = recvPkt[4];
+        unsigned char calcChecksum;
+        recvPkt[4] = 0;
+        calcChecksum = CalcFujiChecksum(recvPkt, recvPktLen);
+        recvPkt[4] = savedChecksum;
+        if (calcChecksum != savedChecksum) {
+            return false;
+        }
+    }
+
+    /* Check device and command match */
+    if (recvPkt[0] != FILE_SERVICE_DEVICE || recvPkt[1] != FILE_CMD_LIST_DIR) {
+        return false;
+    }
+
+    /* Check status */
+    if (recvPkt[6] != 0) {
+        return false;
+    }
+
+    /* Parse payload starting at offset 7 */
+    {
+        short payloadOff = 7;
+        /* u8 version, u8 flags, u16 reserved, u16 count */
+        unsigned char respFlags;
+        short respCount;
+        short entry;
+
+        if (payloadOff + 6 > recvPktLen) {
+            return false;
+        }
+
+        /* skip version byte */
+        payloadOff++;
+        respFlags = recvPkt[payloadOff++];
+        /* skip reserved u16 */
+        payloadOff += 2;
+        respCount = recvPkt[payloadOff] | (recvPkt[payloadOff + 1] << 8);
+        payloadOff += 2;
+
+        *hasMore = (respFlags & 0x01) != 0;
+        *entryCount = 0;
+
+        for (entry = 0; entry < respCount && *entryCount < maxEntries; entry++) {
+            unsigned char eFlags;
+            unsigned char nameLen;
+            short j;
+
+            if (payloadOff + 2 > recvPktLen) break;
+
+            eFlags = recvPkt[payloadOff++];
+            nameLen = recvPkt[payloadOff++];
+
+            if (payloadOff + nameLen + 16 > recvPktLen) break;
+
+            /* Copy name (truncate to 63 chars) */
+            for (j = 0; j < nameLen && j < 63; j++) {
+                entries[*entryCount].name[j] = (char)recvPkt[payloadOff + j];
+            }
+            entries[*entryCount].name[j] = '\0';
+            payloadOff += nameLen;
+
+            entries[*entryCount].isDir = (eFlags & 0x01) != 0;
+
+            /* Skip u64 sizeBytes + u64 modifiedTime = 16 bytes */
+            payloadOff += 16;
+
+            (*entryCount)++;
+        }
+    }
+
+    return true;
+}
+
+/*
+ * Mount a disk image via DiskService
+ * Device 0xFC (DiskService), Command 0x01 (Mount)
+ *
+ * Request payload:
+ *   u8  version (1)
+ *   u8  slot (1-based)
+ *   u8  flags (bit0=readOnly)
+ *   u8  typeRaw (0=auto)
+ *   u16 sectorSizeHint (LE, 0=auto)
+ *   u16 fsNameLen (LE) + u8[] fsName
+ *   u16 pathLen (LE) + u8[] path
+ */
+Boolean MountDisk(short slot, Boolean readOnly,
+                  const char *fsName, const char *path)
+{
+    unsigned char payload[512];
+    unsigned char recvSlip[256];
+    unsigned char recvPkt[128];
+    short recvPktLen;
+    long count;
+    long startTicks;
+    long timeout = 300;  /* 5 second timeout */
+    short i, pos;
+    Boolean inFrame;
+    Boolean escaped;
+    short fsNameLen, pathLen;
+
+    #define DISK_SERVICE_DEVICE  0xFC
+    #define DISK_CMD_MOUNT       0x01
+
+    if (gSerialOutRef == 0 || gSerialInRef == 0) {
+        return false;
+    }
+
+    /* Measure string lengths */
+    for (fsNameLen = 0; fsName[fsNameLen] != '\0' && fsNameLen < 255; fsNameLen++) {}
+    for (pathLen = 0; path[pathLen] != '\0' && pathLen < 255; pathLen++) {}
+
+    /* Build request payload */
+    pos = 0;
+    payload[pos++] = 1;  /* version */
+    payload[pos++] = (unsigned char)slot;  /* 1-based slot */
+    payload[pos++] = readOnly ? 0x01 : 0x00;  /* flags */
+    payload[pos++] = 0;  /* typeRaw = auto */
+    payload[pos++] = 0;  /* sectorSizeHint low = 0 */
+    payload[pos++] = 0;  /* sectorSizeHint high = 0 */
+    /* fsNameLen as u16 LE */
+    payload[pos++] = (unsigned char)(fsNameLen & 0xFF);
+    payload[pos++] = (unsigned char)((fsNameLen >> 8) & 0xFF);
+    for (i = 0; i < fsNameLen; i++) {
+        payload[pos++] = (unsigned char)fsName[i];
+    }
+    /* pathLen as u16 LE */
+    payload[pos++] = (unsigned char)(pathLen & 0xFF);
+    payload[pos++] = (unsigned char)((pathLen >> 8) & 0xFF);
+    for (i = 0; i < pathLen; i++) {
+        payload[pos++] = (unsigned char)path[i];
+    }
+
+    /* Flush any pending input */
+    SerGetBuf(gSerialInRef, &count);
+    if (count > 0) {
+        unsigned char dummy[256];
+        if (count > sizeof(dummy)) count = sizeof(dummy);
+        FSRead(gSerialInRef, &count, dummy);
+    }
+
+    /* Send Mount command */
+    SendFujiBusPacket(DISK_SERVICE_DEVICE, DISK_CMD_MOUNT, payload, pos);
+
+    /* Wait for response with timeout */
+    startTicks = TickCount();
+    recvPktLen = 0;
+    inFrame = false;
+    escaped = false;
+
+    while ((TickCount() - startTicks) < timeout) {
+        SerGetBuf(gSerialInRef, &count);
+
+        if (count > 0) {
+            if (count > sizeof(recvSlip)) count = sizeof(recvSlip);
+            FSRead(gSerialInRef, &count, recvSlip);
+
+            for (i = 0; i < count; i++) {
+                unsigned char b = recvSlip[i];
+
+                if (b == SLIP_END) {
+                    if (inFrame && recvPktLen > 0) {
+                        goto md_frame_complete;
+                    }
+                    inFrame = true;
+                    recvPktLen = 0;
+                    escaped = false;
+                } else if (escaped) {
+                    if (b == SLIP_ESC_END) {
+                        recvPkt[recvPktLen++] = SLIP_END;
+                    } else if (b == SLIP_ESC_ESC) {
+                        recvPkt[recvPktLen++] = SLIP_ESCAPE;
+                    }
+                    escaped = false;
+                } else if (b == SLIP_ESCAPE) {
+                    escaped = true;
+                } else if (inFrame && recvPktLen < sizeof(recvPkt)) {
+                    recvPkt[recvPktLen++] = b;
+                }
+            }
+        }
+
+        Delay(1, NULL);
+    }
+
+    /* Timeout */
+    return false;
+
+md_frame_complete:
+    /* Validate: header(6) + status(1) = 7 bytes minimum */
+    if (recvPktLen < 7) {
+        return false;
+    }
+
+    /* Verify checksum */
+    {
+        unsigned char savedChecksum = recvPkt[4];
+        unsigned char calcChecksum;
+        recvPkt[4] = 0;
+        calcChecksum = CalcFujiChecksum(recvPkt, recvPktLen);
+        recvPkt[4] = savedChecksum;
+        if (calcChecksum != savedChecksum) {
+            return false;
+        }
+    }
+
+    /* Check device and command match */
+    if (recvPkt[0] != DISK_SERVICE_DEVICE || recvPkt[1] != DISK_CMD_MOUNT) {
+        return false;
+    }
+
+    /* Check status */
+    if (recvPkt[6] != 0) {
+        return false;
+    }
+
     return true;
 }
 

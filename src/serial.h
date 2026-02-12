@@ -36,6 +36,28 @@ void SendResetCommand(void);
 /* Get clock time from fujinet-nio (returns true if successful) */
 Boolean GetClockTime(char *timeStr, short maxLen);
 
+/* Read host slots from fujinet-nio (returns true if successful) */
+Boolean ReadHostSlots(char hostSlots[][32], short numSlots);
+
+/* Write host slots to fujinet-nio (returns true if successful) */
+Boolean WriteHostSlots(char hostSlots[][32], short numSlots);
+
+/* Directory entry from ListDirectory */
+typedef struct {
+    char name[64];
+    Boolean isDir;
+} DirEntry;
+
+/* List directory contents via FileService (returns true if successful) */
+Boolean ListDirectory(const char *fsName, const char *path,
+                      short startIndex, short maxEntries,
+                      DirEntry *entries, short *entryCount,
+                      Boolean *hasMore);
+
+/* Mount a disk image via DiskService (returns true if successful) */
+Boolean MountDisk(short slot, Boolean readOnly,
+                  const char *fsName, const char *path);
+
 /* Poll for incoming serial data */
 void PollSerialInput(void);
 
